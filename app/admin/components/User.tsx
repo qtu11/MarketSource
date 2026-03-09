@@ -47,12 +47,18 @@ export function User({ users, updateUserStatus, updateUserBalance }: UserProps) 
     setSyncingUsers(prev => new Set(prev).add(uid));
 
     try {
+      const csrfToken = localStorage.getItem('csrf-token');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'X-Admin-Auth': 'true'
+      };
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
+
       const response = await fetch('/api/admin/force-sync-user', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Admin-Auth': 'true'
-        },
+        headers,
         body: JSON.stringify({ uid })
       });
 
