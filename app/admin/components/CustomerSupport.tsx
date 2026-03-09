@@ -111,7 +111,11 @@ export function CustomerSupport({ users, adminUser }: CustomerSupportProps) {
 
       // ✅ FIX: Admin token đã được set trong httpOnly cookie, không cần lấy từ localStorage
       // Cookie sẽ tự động được gửi kèm request
+      const csrfToken = localStorage.getItem('csrf-token');
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
 
       await fetch('/api/admin/send-telegram', {
         method: "POST",
