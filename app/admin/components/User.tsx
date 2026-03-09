@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Users, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
 import { useState } from 'react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface UserProps {
   users: any[];
@@ -42,6 +43,51 @@ function getSyncStatus(user: any): 'synced' | 'desynced' | 'unknown' {
 
 export function User({ users, updateUserStatus, updateUserBalance }: UserProps) {
   const [syncingUsers, setSyncingUsers] = useState<Set<string>>(new Set());
+  const [passwordDialogProps, setPasswordDialogProps] = useState<{ isOpen: boolean, userId: string, userName: string, userEmail: string }>({ isOpen: false, userId: '', userName: '', userEmail: '' });
+  const [newPassword, setNewPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  const handleChangePassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      alert('Mật khẩu phải có ít nhất 6 ký tự');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const csrfToken = localStorage.getItem('csrf-token');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
+
+      const response = await fetch('/api/admin/reset-user-password', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          userId: passwordDialogProps.userId,
+          userEmail: passwordDialogProps.userEmail,
+          newPassword
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        alert('Đổi mật khẩu thành công!');
+        setPasswordDialogProps({ ...passwordDialogProps, isOpen: false });
+        setNewPassword('');
+      } else {
+        alert(`Lỗi: ${result.error}`);
+      }
+    } catch (error) {
+      logger.error('Error changing password', error);
+      alert('Có lỗi xảy ra khi đổi mật khẩu');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
 
   const handleForceSync = async (uid: string) => {
     setSyncingUsers(prev => new Set(prev).add(uid));
@@ -143,6 +189,19 @@ export function User({ users, updateUserStatus, updateUserBalance }: UserProps) 
                             onClick={() => updateUserStatus(user.uid, user.status === "active" ? "locked" : "active")}
                           >
                             {user.status === "active" ? "Khóa" : "Mở"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 font-medium border-blue-200 shadow-sm"
+                            onClick={() => setPasswordDialogProps({
+                              isOpen: true,
+                              userId: user.uid,
+                              userName: user.name || user.username || '',
+                              userEmail: user.email || ''
+                            })}
+                          >
+                            Tạo pass mới
                           </Button>
                         </div>
                         <div className="mt-2 space-y-1">
@@ -251,6 +310,41 @@ export function User({ users, updateUserStatus, updateUserBalance }: UserProps) 
           </div>
         </CardContent>
       </Card>
+
+      {/* Dialog đổi mật khẩu */}
+      <Dialog
+        open={passwordDialogProps.isOpen}
+        onOpenChange={(isOpen) => setPasswordDialogProps({ ...passwordDialogProps, isOpen })}
+      >
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Tạo Mật Khẩu Mới</DialogTitle>
+            <DialogDescription>
+              Cấp lại mật khẩu cho tài khoản <strong>{passwordDialogProps.userEmail}</strong>. Khách hàng có thể sử dụng ngay sau khi lưu.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2 relative">
+              <Label htmlFor="new-password">Mật khẩu mới</Label>
+              <Input
+                id="new-password"
+                type="text"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Ví dụ: ToiLaAdmin@123..."
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPasswordDialogProps({ ...passwordDialogProps, isOpen: false })}>
+              Hủy
+            </Button>
+            <Button onClick={handleChangePassword} disabled={isChangingPassword || newPassword.length < 6}>
+              {isChangingPassword ? "Đang xử lý..." : "Lưu thay đổi"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
