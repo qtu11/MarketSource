@@ -39,7 +39,7 @@ export function AuditLogs({ logs, search, onSearchChange, onExport }: AuditLogsP
   }, [logs, search])
 
   return (
-    <Card className="bg-white/70 dark:bg-black/40">
+    <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
       <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <CardTitle>Audit logs</CardTitle>

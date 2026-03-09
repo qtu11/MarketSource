@@ -39,7 +39,7 @@ export function AnnouncementManager({ items, onCreate, onToggle, onDelete }: Ann
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <Card className="bg-white/70 dark:bg-black/40">
+      <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
         <CardHeader>
           <CardTitle>Tạo thông báo mới</CardTitle>
           <CardDescription>Thông báo sẽ hiển thị realtime cho cả khách hàng và admin</CardDescription>
@@ -69,7 +69,7 @@ export function AnnouncementManager({ items, onCreate, onToggle, onDelete }: Ann
         </CardContent>
       </Card>
 
-      <Card className="bg-white/70 dark:bg-black/40">
+      <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
         <CardHeader className="flex items-center justify-between">
           <div>
             <CardTitle>Thông báo gần đây</CardTitle>

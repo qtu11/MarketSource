@@ -130,7 +130,7 @@ export function User({ users, updateUserStatus, updateUserBalance }: UserProps) 
 
   return (
     <div className="space-y-6">
-      <Card className="shadow-md bg-white/60 dark:bg-gray-800/40">
+      <Card className="shadow-md neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center space-x-2">

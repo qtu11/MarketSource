@@ -97,8 +97,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // ✅ FIX: Validate amount match với withdrawal
-      if (parseFloat(withdrawal.amount) !== amount) {
+      // ✅ FIX: Validate amount match với withdrawal (Ép kiểu Number vì DB rút tiền có thể bị trả về dạng mã Decimal)
+      if (Number(withdrawal.amount) !== Number(amount)) {
         return NextResponse.json(
           { success: false, error: 'Amount mismatch with withdrawal' },
           { status: 400 }

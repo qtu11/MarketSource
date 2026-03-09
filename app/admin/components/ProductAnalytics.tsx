@@ -24,7 +24,7 @@ interface ProductAnalyticsProps {
 
 export function ProductAnalytics({ trends, topProducts, categories }: ProductAnalyticsProps) {
   return (
-    <Card className="bg-white/70 dark:bg-black/40">
+    <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
       <CardHeader>
         <CardTitle>Phân tích sản phẩm</CardTitle>
         <CardDescription>Lượt xem, chuyển đổi và doanh thu theo sản phẩm</CardDescription>

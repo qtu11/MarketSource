@@ -38,7 +38,7 @@ export function PromotionManager({ promotions, onCreate, onToggle, onDelete }: P
   })
 
   return (
-    <Card className="bg-white/70 dark:bg-black/40">
+    <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
       <CardHeader>
         <CardTitle>Quản lý khuyến mãi</CardTitle>
         <CardDescription>Tạo flash sale, bundle deal và phân phối đa kênh</CardDescription>

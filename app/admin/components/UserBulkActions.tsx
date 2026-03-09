@@ -38,7 +38,7 @@ export function UserBulkActions({ users, onToggle, onSelectAll, onLock, onUnlock
   }, [users])
 
   return (
-    <Card className="bg-white/70 dark:bg-black/40">
+    <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
       <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <CardTitle>Bulk actions</CardTitle>

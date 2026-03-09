@@ -320,7 +320,7 @@ export function Analytics({ users, products, purchases, deposits, withdrawals }:
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Revenue Line Chart */}
-        <Card className="bg-white/60 dark:bg-gray-800/60">
+        <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
           <CardHeader>
             <CardTitle>Biểu đồ doanh thu theo thời gian</CardTitle>
           </CardHeader>
@@ -368,7 +368,7 @@ export function Analytics({ users, products, purchases, deposits, withdrawals }:
         </Card>
 
         {/* Revenue Distribution Pie Chart */}
-        <Card className="bg-white/60 dark:bg-gray-800/60">
+        <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
           <CardHeader>
             <CardTitle>Phân bố doanh thu</CardTitle>
           </CardHeader>
@@ -433,7 +433,7 @@ export function Analytics({ users, products, purchases, deposits, withdrawals }:
       {/* User Growth and Top Products */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* User Growth Area Chart */}
-        <Card className="bg-white/60 dark:bg-gray-800/60">
+        <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
           <CardHeader>
             <CardTitle>Tăng trưởng người dùng</CardTitle>
           </CardHeader>

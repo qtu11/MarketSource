@@ -23,7 +23,7 @@ export function TransactionFilters({ filters, onChange, onReset, onExport }: Tra
   const update = (patch: Partial<TransactionFiltersProps["filters"]>) => onChange({ ...filters, ...patch })
 
   return (
-    <Card className="bg-white/70 dark:bg-black/40">
+    <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
       <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <CardTitle className="flex items-center gap-2">

@@ -26,7 +26,7 @@ interface ReviewManagementProps {
 
 export function ReviewManagement({ reviews, onApprove, onReject, onDelete, onRespond }: ReviewManagementProps) {
   return (
-    <Card className="bg-white/70 dark:bg-black/40">
+    <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
       <CardHeader>
         <CardTitle>Quản lý đánh giá</CardTitle>
         <CardDescription>Duyệt, phản hồi hoặc xóa đánh giá spam</CardDescription>

@@ -23,7 +23,7 @@ export function Setting({
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="bg-white/60 dark:bg-gray-800/40">
+        <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
           <CardHeader>
             <CardTitle className="flex items-center ">
               <MessageSquare className="w-5 h-5 mr-2" />
@@ -50,7 +50,7 @@ export function Setting({
           </CardContent>
         </Card>
 
-        <Card className="bg-white/60 dark:bg-gray-800/40">
+        <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
           <CardHeader>
             <CardTitle className="flex items-center">
               <Phone className="w-5 h-5 mr-2" />
@@ -75,7 +75,7 @@ export function Setting({
         </Card>
       </div>
 
-      <Card className="bg-white/60 dark:bg-gray-800/40">
+      <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
         <CardHeader>
           <CardTitle>Thông tin hệ thống</CardTitle>
         </CardHeader>

@@ -199,7 +199,7 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-1 bg-white/60 dark:bg-gray-800/40">
+        <Card className="lg:col-span-1 neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
           <CardHeader>
             <CardTitle>Thêm sản phẩm mới</CardTitle>
           </CardHeader>
@@ -444,7 +444,7 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
           </Card>
         )}
 
-        <Card className="lg:col-span-2 bg-white/60 dark:bg-gray-800/40">
+        <Card className="lg:col-span-2 neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
           <CardHeader>
             <CardTitle>Danh sách sản phẩm ({products.length})</CardTitle>
           </CardHeader>

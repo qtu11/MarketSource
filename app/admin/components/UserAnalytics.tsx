@@ -25,7 +25,7 @@ export function UserAnalytics({
 }: UserAnalyticsProps) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <Card className="lg:col-span-2 bg-white/70 dark:bg-black/40">
+      <Card className="lg:col-span-2 neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
         <CardHeader>
           <CardTitle>Retention & Churn</CardTitle>
           <CardDescription>Tỷ lệ giữ chân người dùng theo tháng</CardDescription>
@@ -44,7 +44,7 @@ export function UserAnalytics({
         </CardContent>
       </Card>
 
-      <Card className="bg-white/70 dark:bg-black/40">
+      <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
         <CardHeader>
           <CardTitle>Health status</CardTitle>
         </CardHeader>
@@ -70,7 +70,7 @@ export function UserAnalytics({
         </CardContent>
       </Card>
 
-      <Card className="lg:col-span-3 bg-white/70 dark:bg-black/40">
+      <Card className="lg:col-span-3 neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
         <CardHeader>
           <CardTitle>Segmentation</CardTitle>
           <CardDescription>Nhóm người dùng quan trọng</CardDescription>

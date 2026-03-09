@@ -28,7 +28,7 @@ export function BackupRestore({ backups, onBackup, onRestore, isBackingUp = fals
   const [selectedBackup, setSelectedBackup] = useState<string | null>(null)
 
   return (
-    <Card className="bg-white/70 dark:bg-black/40">
+    <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
       <CardHeader>
         <CardTitle>Sao lưu & Khôi phục</CardTitle>
         <CardDescription>Bảo vệ dữ liệu quan trọng, hỗ trợ restore trong 1 click</CardDescription>

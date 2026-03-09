@@ -58,6 +58,7 @@ import { ProductAnalytics } from "./components/ProductAnalytics"
 import { ReviewManagement } from "./components/ReviewManagement"
 import { TransactionFilters } from "./components/TransactionFilters"
 import { AnnouncementManager } from "./components/AnnouncementManager"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { FAQManager } from "./components/FAQManager"
 import { AuditLogs } from "./components/AuditLogs"
 import { PromotionManager } from "./components/PromotionManager"
@@ -1703,18 +1704,22 @@ Hệ thống thông báo đang hoạt động bình thường.`
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-foreground relative">
-      {/* 3D Liquid Background */}
-      <div className="liquid-3d-bg" />
+    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-[#0a0f1a] dark:text-slate-100 relative overflow-hidden transition-colors duration-300">
+      {/* Ambient Lighting Background */}
+      <div className="ambient-light bg-purple-500/20 dark:bg-purple-600/20 w-[600px] h-[600px] top-[-200px] left-[-200px]"></div>
+      <div className="ambient-light bg-blue-500/20 dark:bg-sky-500/20 w-[500px] h-[500px] bottom-[-100px] right-[-100px]"></div>
+
+      {/* 3D Liquid Background (Hiển thị mờ ảo ở Dark Mode) */}
+      <div className="liquid-3d-bg hidden dark:block" />
       {/* 3D background nhẹ phía sau */}
-      <div className="pointer-events-none absolute inset-0 opacity-30 z-0">
+      <div className="pointer-events-none absolute inset-0 opacity-10 dark:opacity-30 z-0">
         <ThreeJSAdmin />
         <ThreeDFallback />
       </div>
 
       <div className="relative z-10 flex min-h-screen">
         {/* Sidebar trái */}
-        <aside className="hidden md:flex w-64 flex-col border-r border-white/5 bg-slate-950/70 backdrop-blur-xl px-4 py-6 liquid-glass">
+        <aside className="hidden md:flex w-64 flex-col border-r border-slate-200 dark:border-white/5 glass-panel px-4 py-6 transition-transform">
           <div className="flex items-center gap-3 px-2">
             <Logo />
             <div className="space-y-0.5">
@@ -1990,34 +1995,35 @@ Hệ thống thông báo đang hoạt động bình thường.`
         {/* Main content */}
         <main className="flex-1">
           {/* Header */}
-          <header className="border-b border-white/5 bg-slate-950/70 backdrop-blur-xl">
+          <header className="border-b border-slate-200 dark:border-white/5 glass-panel">
             <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
               <div className="flex items-center gap-3">
                 <div className="md:hidden">
                   <Logo />
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-sky-400">
+                  <p className="text-xs uppercase tracking-[0.18em] text-sky-500 dark:text-sky-400">
                     Admin control
                   </p>
-                  <h1 className="text-xl font-semibold text-slate-50">
+                  <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-50 text-glow">
                     Xin chào, {adminUser.name}
                   </h1>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Quản lí người dùng, giao dịch và hệ thống trong một màn hình.
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <Badge className="bg-emerald-500/10 text-emerald-300 border border-emerald-500/40">
+                <Badge className="bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/40">
                   <Shield className="mr-1 h-3 w-3" />
                   Admin
                 </Badge>
+                <ThemeToggle />
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleLogout}
-                  className="border-slate-700 bg-slate-900 text-slate-100 hover:bg-slate-800"
+                  className="border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
                   <LogOut className="mr-2 h-4 w-4" />
                   Đăng xuất
@@ -2028,56 +2034,56 @@ Hệ thống thông báo đang hoạt động bình thường.`
             {/* Hàng thẻ thống kê nhanh */}
             <div className="mx-auto max-w-6xl px-4 pb-4">
               <div className="grid gap-3 md:grid-cols-4">
-                <Card className="liquid-glass-card border-slate-800 bg-slate-950/80 text-slate-100">
+                <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
                   <CardHeader className="pb-2">
-                    <CardDescription className="text-xs text-slate-400">
+                    <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
                       Doanh thu tổng
                     </CardDescription>
-                    <CardTitle className="text-lg">
+                    <CardTitle className="text-lg text-glow">
                       {stats.totalRevenue.toLocaleString("vi-VN")}đ
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="flex items-center justify-between pt-0 text-xs text-slate-400">
+                  <CardContent className="flex items-center justify-between pt-0 text-xs text-slate-500 dark:text-slate-400">
                     <span>{stats.totalPurchases} giao dịch</span>
                   </CardContent>
                 </Card>
-                <Card className="liquid-glass-card border-slate-800 bg-slate-950/80 text-slate-100">
+                <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
                   <CardHeader className="pb-2">
-                    <CardDescription className="text-xs text-slate-400">
+                    <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
                       Người dùng
                     </CardDescription>
-                    <CardTitle className="text-lg">
+                    <CardTitle className="text-lg text-glow">
                       {stats.totalUsers.toLocaleString("vi-VN")}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="flex items-center justify-between pt-0 text-xs text-slate-400">
+                  <CardContent className="flex items-center justify-between pt-0 text-xs text-slate-500 dark:text-slate-400">
                     <span>{stats.newUsersCount} mới / 7 ngày</span>
                   </CardContent>
                 </Card>
-                <Card className="liquid-glass-card border-slate-800 bg-slate-950/80 text-slate-100">
+                <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
                   <CardHeader className="pb-2">
-                    <CardDescription className="text-xs text-slate-400">
+                    <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
                       Nạp &amp; rút đang chờ
                     </CardDescription>
-                    <CardTitle className="text-lg">
+                    <CardTitle className="text-lg text-glow">
                       {stats.pendingDepositsCount + stats.pendingWithdrawalsCount}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="flex items-center justify-between pt-0 text-xs text-slate-400">
+                  <CardContent className="flex items-center justify-between pt-0 text-xs text-slate-500 dark:text-slate-400">
                     <span>{stats.pendingDepositsCount} nạp</span>
                     <span>{stats.pendingWithdrawalsCount} rút</span>
                   </CardContent>
                 </Card>
-                <Card className="liquid-glass-card border-slate-800 bg-slate-950/80 text-slate-100">
+                <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
                   <CardHeader className="pb-2">
-                    <CardDescription className="text-xs text-slate-400">
+                    <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
                       Sản phẩm
                     </CardDescription>
-                    <CardTitle className="text-lg">
+                    <CardTitle className="text-lg text-glow">
                       {stats.totalProducts.toLocaleString("vi-VN")}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="flex items-center justify-between pt-0 text-xs text-slate-400">
+                  <CardContent className="flex items-center justify-between pt-0 text-xs text-slate-500 dark:text-slate-400">
                     <span>Quản lí toàn bộ catalog</span>
                   </CardContent>
                 </Card>

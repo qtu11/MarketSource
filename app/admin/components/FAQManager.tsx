@@ -33,7 +33,7 @@ export function FAQManager({ faqs, onSave, onToggle, onDelete }: FAQManagerProps
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <Card className="bg-white/70 dark:bg-black/40">
+      <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
         <CardHeader>
           <CardTitle>FAQ Builder</CardTitle>
           <CardDescription>Tạo câu hỏi thường gặp cho khách hàng</CardDescription>
@@ -57,7 +57,7 @@ export function FAQManager({ faqs, onSave, onToggle, onDelete }: FAQManagerProps
         </CardContent>
       </Card>
 
-      <Card className="bg-white/70 dark:bg-black/40">
+      <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
         <CardHeader className="flex items-center justify-between">
           <div>
             <CardTitle>Danh sách FAQ</CardTitle>

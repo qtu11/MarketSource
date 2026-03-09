@@ -215,7 +215,7 @@ export function NotificationManagement() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Send Notification Form */}
-        <Card className="bg-white/60 dark:bg-gray-800/60">
+        <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
           <CardHeader>
             <CardTitle className="flex items-center">
               <Send className="w-5 h-5 mr-2" />
@@ -300,7 +300,7 @@ export function NotificationManagement() {
         </Card>
 
         {/* Notifications List */}
-        <Card className="bg-white/60 dark:bg-gray-800/60">
+        <Card className="neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
           <CardHeader>
             <CardTitle className="flex items-center">
               <Bell className="w-5 h-5 mr-2" />

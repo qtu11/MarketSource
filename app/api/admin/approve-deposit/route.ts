@@ -97,8 +97,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // ✅ FIX: Validate amount match với deposit
-      if (parseFloat(deposit.amount) !== amount) {
+      // ✅ FIX: Validate amount match với deposit (Ép kiểu Number vì DB có thể trả dề dạng chuỗi Decimal '100000.00')
+      if (Number(deposit.amount) !== Number(amount)) {
         return NextResponse.json(
           { success: false, error: 'Amount mismatch with deposit' },
           { status: 400 }
