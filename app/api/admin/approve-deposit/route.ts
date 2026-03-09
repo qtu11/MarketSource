@@ -22,17 +22,17 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
-    
+
     // Require admin authentication
     await requireAdmin(request);
-    
+
     const { depositId, amount, userId, action, userEmail } = await request.json();
 
     // Validate request
     const validation = validateRequest({ depositId, userId, action }, {
       required: ['depositId', 'userId', 'action']
     });
-    
+
     if (!validation.valid) {
       return NextResponse.json(
         { success: false, error: validation.error || 'Missing required fields: depositId, userId, or action' },
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
         'SELECT id, user_id, amount, status FROM deposits WHERE id = ?',
         [depositId]
       );
-      
+
       if (!deposit) {
         return NextResponse.json(
           { success: false, error: 'Deposit not found' },
@@ -86,11 +86,11 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // ✅ FIX: Validate userId match với deposit
+      // ✅ FIX: Validate userId match với deposit (Ép sang chuỗi để so sánh vì CSDL có thể trả ra BigInt là chuỗi)
       const depositUserId = deposit.user_id;
       const normalizedDepositUserId = await normalizeUserId(userId, userEmail);
-      
-      if (normalizedDepositUserId !== depositUserId) {
+
+      if (String(normalizedDepositUserId) !== String(depositUserId)) {
         return NextResponse.json(
           { success: false, error: 'User ID mismatch with deposit' },
           { status: 400 }
@@ -107,14 +107,14 @@ export async function POST(request: NextRequest) {
 
       // Normalize userId: convert string uid to PostgreSQL INT
       const dbUserId = await normalizeUserId(userId, userEmail);
-      
+
       if (!dbUserId) {
         return NextResponse.json(
           { success: false, error: 'Cannot resolve user ID. User may not exist in database.' },
           { status: 400 }
         );
       }
-      
+
       // Use transaction-safe function để đảm bảo atomicity
       const adminEmail = process.env.ADMIN_EMAIL || 'admin';
       const result = await approveDepositAndUpdateBalance(
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
         amount,
         adminEmail
       );
-      
+
       // Sync với userManager (Firestore/localStorage) nếu userId là string uid
       if (typeof userId === 'string') {
         try {
@@ -153,17 +153,17 @@ export async function POST(request: NextRequest) {
     } else if (action === 'reject') {
       // Normalize userId cho reject action
       const dbUserIdForReject = await normalizeUserId(userId, userEmail);
-      
+
       if (!dbUserIdForReject) {
         return NextResponse.json(
           { success: false, error: 'Cannot resolve user ID. User may not exist in database.' },
           { status: 400 }
         );
       }
-      
+
       // Update deposit status to rejected
       await updateDepositStatus(parseInt(depositId), 'rejected');
-      
+
       // ✅ FIX: Tạo notification cho user khi deposit bị reject
       try {
         const { createNotification } = await import('@/lib/database-mysql');
@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
       // ✅ SECURITY FIX: Chỉ dùng server-side env vars (không expose ra client)
       const botToken = process.env.TELEGRAM_BOT_TOKEN;
       const chatId = process.env.TELEGRAM_CHAT_ID;
-      
+
       if (botToken && chatId) {
         try {
           await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
