@@ -618,8 +618,12 @@ function AdminPageContent() {
   // Function to process the deposit approval - moved before approveDeposit
   const processDepositApproval = useCallback(async (deposit: any, adminUser: any) => {
     try {
-      // ✅ FIX: Thêm Authorization header và userEmail
-      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      const csrfToken = localStorage.getItem('csrf-token');
+      // ✅ FIX: Thêm Authorization header, userEmail và CSRF Token
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
       // ✅ FIX: Admin token đã được set trong httpOnly cookie, không cần lấy từ localStorage
       // Cookie sẽ tự động được gửi kèm request
 
@@ -845,8 +849,12 @@ function AdminPageContent() {
         return;
       }
 
-      // ✅ FIX: Thêm Authorization header và userEmail
-      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      const csrfToken = localStorage.getItem('csrf-token');
+      // ✅ FIX: Thêm Authorization header, userEmail và CSRF Token
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
       // ✅ FIX: Admin token đã được set trong httpOnly cookie, không cần lấy từ localStorage
       // Cookie sẽ tự động được gửi kèm request
 
