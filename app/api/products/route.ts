@@ -105,10 +105,11 @@ export async function POST(request: NextRequest) {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
     `;
 
-    // ✅ FIX: tags phải là JSON string cho MySQL, không phải array cho PostgreSQL
-    const tagsValue = Array.isArray(productData.tags)
-      ? JSON.stringify(productData.tags)
-      : productData.tags || '[]';
+    // ✅ FIX: tags phải là array cho PostgreSQL hoặc JSON string cho MySQL
+    const isPostgres = process.env.DATABASE_URL || !process.env.MYSQL_HOST;
+    const tagsValue = isPostgres
+      ? (Array.isArray(productData.tags) ? productData.tags : JSON.parse(productData.tags || '[]'))
+      : (Array.isArray(productData.tags) ? JSON.stringify(productData.tags) : productData.tags || '[]');
 
     const res = await query(sql, [
       productData.title,
