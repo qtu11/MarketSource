@@ -223,8 +223,8 @@ export async function PUT(request: NextRequest): Promise<Response> {
         }, { status: 400 });
       }
 
-      const { approveDepositAndUpdateBalance } = await import('@/lib/database-mysql');
-      const result = await approveDepositAndUpdateBalance(
+      const { approveDepositAndUpdateBalanceMySQL } = await import('@/lib/database-mysql');
+      const result = await approveDepositAndUpdateBalanceMySQL(
         Number(updateData.depositId),
         Number(deposit.user_id),
         Number(deposit.amount),

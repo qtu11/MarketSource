@@ -46,6 +46,22 @@ const ThreeJSProductShowcase = dynamic(
   }
 )
 
+const MeteorShowerBackdrop = dynamic(
+  async () => {
+    try {
+      const mod = await import("@/components/meteor-shower-3d")
+      return { default: mod.MeteorShower3D }
+    } catch (error) {
+      logger.error('Failed to load MeteorShower3D component', error)
+      throw error
+    }
+  },
+  {
+    ssr: false,
+    loading: () => <div className="absolute inset-0 bg-[#0B0C10]" />
+  }
+)
+
 const BASE_CATEGORIES = [
   { id: "all", name: "Tất cả", count: 0 },
   { id: "website", name: "Website", count: 0 },
@@ -263,13 +279,13 @@ export default function ProductsPage() {
 
   return (
     <div className="bg-white dark:bg-gray-900 min-h-screen relative overflow-hidden">
-      {/* ✅ FIX: Thay 3D xấu bằng Gradient Background đẹp + Glass Morphism */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-purple-500/15 dark:bg-purple-500/10 rounded-full blur-[120px]" />
-        <div className="absolute top-1/3 right-1/4 w-[400px] h-[400px] bg-pink-500/15 dark:bg-pink-500/10 rounded-full blur-[100px]" />
-        <div className="absolute bottom-0 left-1/2 w-[600px] h-[400px] bg-indigo-500/10 dark:bg-indigo-500/8 rounded-full blur-[140px]" />
-        {/* Grid pattern overlay */}
-        <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]" style={{ backgroundImage: 'radial-gradient(circle, currentColor 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
+      {/* ✅ Hiệu ứng 3D Mưa sao băng theo yêu cầu */}
+      <MeteorShowerBackdrop />
+
+      {/* Vẫn giữ một chút gradient mờ overlay để text bên trên dễ đọc */}
+      <div className="absolute inset-0 pointer-events-none z-0">
+        <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-purple-500/10 dark:bg-purple-500/5 rounded-full blur-[120px]" />
+        <div className="absolute bottom-0 left-1/2 w-[600px] h-[400px] bg-indigo-500/10 dark:bg-indigo-500/5 rounded-full blur-[140px]" />
       </div>
 
       <FloatingHeader />

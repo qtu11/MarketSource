@@ -26,12 +26,14 @@ export async function verifyHCaptcha(
     token: string,
     remoteip?: string
 ): Promise<HCaptchaVerifyResult> {
+    // In development mode, bypass hCaptcha verification to prevent issues with test sitekeys but real secrets
+    if (process.env.NODE_ENV === 'development') {
+        console.warn('[hCaptcha] Development mode detected, completely bypassing verification');
+        return { success: true };
+    }
+
     if (!HCAPTCHA_SECRET) {
-        console.warn('[hCaptcha] HCAPTCHA_SECRET_KEY not set — skipping verification in development');
-        // In development without secret key, allow requests through
-        if (process.env.NODE_ENV === 'development') {
-            return { success: true };
-        }
+        console.warn('[hCaptcha] HCAPTCHA_SECRET_KEY not set in production');
         return { success: false, 'error-codes': ['missing-secret'] };
     }
 

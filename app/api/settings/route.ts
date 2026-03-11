@@ -6,21 +6,37 @@ import { checkRateLimitAndRespond } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 
-// Ensure the table exists (MySQL syntax)
+// Ensure the table exists (Cross DB compatibility)
 async function ensureSettingsTable() {
     try {
-        await query(`
-            CREATE TABLE IF NOT EXISTS settings (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                \`key\` VARCHAR(255) UNIQUE NOT NULL,
-                value TEXT,
-                type VARCHAR(255),
-                group_name VARCHAR(255),
-                label VARCHAR(255),
-                description TEXT,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        `)
+        const isPostgres = process.env.DATABASE_URL || !process.env.MYSQL_HOST;
+        if (isPostgres) {
+            await query(`
+                CREATE TABLE IF NOT EXISTS settings (
+                    id SERIAL PRIMARY KEY,
+                    "key" VARCHAR(255) UNIQUE NOT NULL,
+                    value TEXT,
+                    type VARCHAR(255),
+                    group_name VARCHAR(255),
+                    label VARCHAR(255),
+                    description TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            `);
+        } else {
+            await query(`
+                CREATE TABLE IF NOT EXISTS settings (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    \`key\` VARCHAR(255) UNIQUE NOT NULL,
+                    value TEXT,
+                    type VARCHAR(255),
+                    group_name VARCHAR(255),
+                    label VARCHAR(255),
+                    description TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            `);
+        }
     } catch (error) {
         logger.error('Error creating settings table', { error })
     }

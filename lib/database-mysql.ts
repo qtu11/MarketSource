@@ -112,6 +112,9 @@ function getPool(): Pool {
 function convertToPostgresSql(sql: string): string {
   let converted = sql;
 
+  // 0. Convert MySQL backticks (`) to literal double quotes (") for column names
+  converted = converted.replace(/`/g, '"');
+
   // 1. Convert INSERT IGNORE → INSERT ... ON CONFLICT DO NOTHING
   converted = converted.replace(/INSERT\s+IGNORE\s+INTO/gi, 'INSERT INTO');
   // Note: ON CONFLICT DO NOTHING is added by addToWishlistMySQL directly
@@ -129,6 +132,9 @@ function convertToPostgresSql(sql: string): string {
     else if (['reviews'].includes(tableName)) conflictCol = 'user_id, product_id';
     else if (['product_ratings'].includes(tableName)) conflictCol = 'product_id';
     else if (['wishlists'].includes(tableName)) conflictCol = 'user_id, product_id';
+    else if (['settings'].includes(tableName)) conflictCol = '"key"';
+    else if (['user_coupons'].includes(tableName)) conflictCol = 'user_id, coupon_id';
+    else if (['review_votes'].includes(tableName)) conflictCol = 'review_id, user_id';
 
     // Replace ON DUPLICATE KEY UPDATE → ON CONFLICT (col) DO UPDATE SET
     converted = converted.replace(
@@ -434,7 +440,7 @@ export async function createDepositMySQL(depositData: {
             depositData.userName || null,
           ]
         )
-        insertId = result[0]?.id;
+        insertId = (result[0] as any[])[0]?.id;
       } else {
         const result = await conn.query(
           `INSERT INTO deposits (user_id, amount, method, user_email, user_name, status, timestamp)
@@ -447,7 +453,7 @@ export async function createDepositMySQL(depositData: {
             depositData.userName || null,
           ]
         )
-        insertId = result[0]?.id;
+        insertId = (result[0] as any[])[0]?.id;
       }
     } else {
       let result;
@@ -608,10 +614,16 @@ export async function createWithdrawalMySQL(withdrawalData: {
       throw new Error("You have a pending withdrawal request. Please wait for approval.")
     }
 
+    // ✅ FIX: Trừ tiền user_balance ngay lập tức atomically
+    await conn.query(
+      "UPDATE users SET balance = balance - ?, updated_at = NOW() WHERE id = ? AND balance >= ?",
+      [withdrawalData.amount, dbUserId, withdrawalData.amount]
+    )
+
     let insertId: number;
 
     if (usePostgresBridge) {
-      const result = await query(
+      const result = await conn.query(
         `INSERT INTO withdrawals (
           user_id, amount, bank_name, account_number, account_name, user_email, status, created_at
         )
@@ -625,7 +637,7 @@ export async function createWithdrawalMySQL(withdrawalData: {
           withdrawalData.userEmail || null,
         ]
       )
-      insertId = result[0]?.id;
+      insertId = (result[0] as any[])[0]?.id;
     } else {
       const [result]: any = await conn.query(
         `INSERT INTO withdrawals (
@@ -698,7 +710,47 @@ export async function updateWithdrawalStatusMySQL(
   status: 'pending' | 'approved' | 'rejected',
   approvedBy?: string
 ) {
-  try {
+  // ✅ FIX: Dùng transaction để đảm bảo hoàn tiền nếu rejected
+  return withTransaction(async (conn) => {
+    const [withdrawalRows]: any = await conn.query(
+      'SELECT user_id, amount, status FROM withdrawals WHERE id = ? FOR UPDATE',
+      [withdrawalId]
+    )
+
+    if (withdrawalRows.length === 0) {
+      throw new Error('Withdrawal not found')
+    }
+
+    const withdrawal = withdrawalRows[0]
+
+    // Không làm gì nếu status không đổi
+    if (withdrawal.status === status) return
+
+    // Nếu chuyển từ pending -> rejected, tự động Refund tiền cho User
+    if (withdrawal.status === 'pending' && status === 'rejected') {
+      await conn.query(
+        'UPDATE users SET balance = balance + ?, updated_at = NOW() WHERE id = ?',
+        [withdrawal.amount, withdrawal.user_id]
+      )
+    }
+
+    // Nếu lệnh trước đó đã bị rejected (đã hoàn lại tiền), nay được cập nhật thành pending/approved -> Phải trừ tiền lại
+    if (withdrawal.status === 'rejected' && (status === 'pending' || status === 'approved')) {
+      // Khóa dòng user để kiểm tra số dư
+      const [userRows]: any = await conn.query(
+        'SELECT balance FROM users WHERE id = ? FOR UPDATE',
+        [withdrawal.user_id]
+      )
+      const currentBalance = Number(userRows[0]?.balance || 0)
+      if (currentBalance < withdrawal.amount) {
+        throw new Error('Người dùng không đủ số dư để duyệt lại lệnh rút tiền này')
+      }
+      await conn.query(
+        'UPDATE users SET balance = balance - ?, updated_at = NOW() WHERE id = ?',
+        [withdrawal.amount, withdrawal.user_id]
+      )
+    }
+
     const updates: string[] = []
     const params: any[] = []
 
@@ -714,15 +766,12 @@ export async function updateWithdrawalStatusMySQL(
     params.push(withdrawalId)
 
     if (updates.length > 0) {
-      await query(
+      await conn.query(
         `UPDATE withdrawals SET ${updates.join(', ')} WHERE id = ?`,
         params
       )
     }
-  } catch (err) {
-    logger.error('MySQL: updateWithdrawalStatus error', err, { withdrawalId, status })
-    throw err
-  }
+  })
 }
 
 // ===================== PURCHASES =====================
@@ -800,11 +849,11 @@ export async function createPurchaseMySQL(purchaseData: {
 
     // 5. Tạo bản ghi mua hàng
     if (usePostgresBridge) {
-      const result = await query(
+      const result = await conn.query(
         "INSERT INTO purchases (user_id, product_id, amount, created_at) VALUES (?, ?, ?, NOW()) RETURNING id",
         [dbUserId, productIdNum, finalPurchasePrice]
       )
-      purchaseId = result[0]?.id;
+      purchaseId = (result[0] as any[])[0]?.id;
     } else {
       const [pRows]: any = await conn.query(
         "INSERT INTO purchases (user_id, product_id, amount, created_at) VALUES (?, ?, ?, NOW())",

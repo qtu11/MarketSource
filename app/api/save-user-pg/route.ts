@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getClientIP } from '@/lib/api-auth';
+import { getClientIP, requireAdmin } from '@/lib/api-auth';
 import { createOrUpdateUser } from '@/lib/database-mysql';
 import bcrypt from 'bcryptjs';
 import { logger } from '@/lib/logger';
@@ -12,6 +12,9 @@ export const runtime = 'nodejs'
  */
 export async function POST(request: NextRequest) {
   try {
+    // ✅ FIX: Protect this endpoint to prevent Account Takeover
+    await requireAdmin(request);
+
     const body = await request.json();
     const {
       email,

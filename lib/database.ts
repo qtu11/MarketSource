@@ -40,13 +40,13 @@ const poolConfig = isServerless
   ? {
     max: 1, // Serverless chỉ cần 1 connection per function instance
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000, // Tăng timeout cho serverless
+    connectionTimeoutMillis: 20000, // Tăng timeout cho serverless (20s)
     allowExitOnIdle: true, // Cho phép exit khi idle (serverless)
   }
   : {
     max: 20, // Traditional server: nhiều connections
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    connectionTimeoutMillis: 20000, // Tăng timeout cho dev cục bộ (20s)
   };
 
 // PostgreSQL Connection Pool với fallback

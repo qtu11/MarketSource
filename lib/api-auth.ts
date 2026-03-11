@@ -275,20 +275,14 @@ async function isDatabaseAdmin(email: string | null): Promise<boolean> {
   if (!email) {
     return false;
   }
-  const { getUserIdByEmail, pool } = await import('@/lib/database');
-  const userId = await getUserIdByEmail(email);
+  const { getUserIdByEmailMySQL, getUserByIdMySQL } = await import('@/lib/database-mysql');
+  const userId = await getUserIdByEmailMySQL(email);
   if (!userId) {
     return false;
   }
 
-  const adminCheck = await pool.query(
-    `SELECT id FROM admin WHERE user_id = $1
-     UNION
-     SELECT id FROM users WHERE id = $1 AND role = 'admin'`,
-    [userId]
-  );
-
-  return adminCheck.rows.length > 0;
+  const user = await getUserByIdMySQL(userId);
+  return user != null && (user.role === 'admin' || user.role === 'superadmin');
 }
 
 async function validateAdminToken(token?: string | null) {

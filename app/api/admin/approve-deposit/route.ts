@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import {
-  approveDepositAndUpdateBalance,
-  updateDepositStatus,
-  getUserById,
+  approveDepositAndUpdateBalanceMySQL,
+  updateDepositStatusMySQL,
+  getUserByIdMySQL,
   normalizeUserIdMySQL as normalizeUserId,
-  getUserIdByEmail,
+  getUserIdByEmailMySQL as getUserIdByEmail,
 } from "@/lib/database-mysql"
 import { requireAdmin, validateRequest } from "@/lib/api-auth"
 import { userManager } from "@/lib/userManager"
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
 
       // Use transaction-safe function để đảm bảo atomicity
       const adminEmail = process.env.ADMIN_EMAIL || 'admin';
-      const result = await approveDepositAndUpdateBalance(
+      const result = await approveDepositAndUpdateBalanceMySQL(
         parseInt(depositId),
         dbUserId,
         amount,
@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Update deposit status to rejected
-      await updateDepositStatus(parseInt(depositId), 'rejected');
+      await updateDepositStatusMySQL(parseInt(depositId), 'rejected');
 
       // ✅ FIX: Tạo notification cho user khi deposit bị reject
       try {

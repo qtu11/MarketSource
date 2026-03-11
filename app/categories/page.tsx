@@ -13,19 +13,19 @@ import Image from "next/image"
 import dynamic from "next/dynamic"
 
 // Lazy load Three.js components để tối ưu performance
-const ThreeJSProductShowcase = dynamic(
+const MeteorShowerBackdrop = dynamic(
   async () => {
     try {
-      const mod = await import("@/components/three-js-product-showcase")
-      return { default: mod.ThreeJSProductShowcase }
+      const mod = await import("@/components/meteor-shower-3d")
+      return { default: mod.MeteorShower3D }
     } catch (error) {
-      logger.error('Failed to load ThreeJS Product Showcase component', error)
+      logger.error('Failed to load MeteorShower3D component', error)
       throw error
     }
   },
   {
     ssr: false,
-    loading: () => <div className="absolute inset-0 bg-gradient-to-b from-purple-100 to-pink-100 dark:from-purple-900 dark:to-pink-900" />
+    loading: () => <div className="absolute inset-0 bg-[#0B0C10]" />
   }
 )
 
@@ -166,9 +166,8 @@ export default function CategoriesPage() {
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900 transition-colors duration-300 relative">
       {/* 3D Background */}
-      <div className="absolute inset-0">
-        <ThreeJSProductShowcase />
-        <ThreeDFallback />
+      <div className="absolute inset-0 pointer-events-none">
+        <MeteorShowerBackdrop />
       </div>
 
       <FloatingHeader />
