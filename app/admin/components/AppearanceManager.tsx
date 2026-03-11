@@ -453,6 +453,7 @@ export function AppearanceManager() {
                                     <div className="space-y-2">
                                         <p className="text-xs text-gray-500">Preview Logo</p>
                                         <div className="w-40 h-16 bg-gray-800 rounded-lg flex items-center justify-center p-2 border border-gray-700">
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
                                             <img src={settings.logoUrl} alt="Logo" className="max-h-full max-w-full object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
                                         </div>
                                     </div>
@@ -461,6 +462,7 @@ export function AppearanceManager() {
                                     <div className="space-y-2">
                                         <p className="text-xs text-gray-500">Preview Favicon</p>
                                         <div className="w-12 h-12 bg-gray-800 rounded-lg flex items-center justify-center p-1 border border-gray-700">
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
                                             <img src={settings.faviconUrl} alt="Favicon" className="max-h-full max-w-full" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
                                         </div>
                                     </div>

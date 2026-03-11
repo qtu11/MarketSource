@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    email = body.email;
+    email = body.email?.trim().toLowerCase();
     password = body.password;
     name = body.name;
     username = body.username;

@@ -55,6 +55,26 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    const { verifyFirebaseToken, requireAdmin } = await import("@/lib/api-auth");
+    const authUser = await verifyFirebaseToken(request);
+    const isAdmin = await requireAdmin(request).catch(() => false);
+
+    if (!authUser && !isAdmin) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!isAdmin) {
+      if (email && email.toLowerCase() !== authUser?.email?.toLowerCase()) {
+        return NextResponse.json({ success: false, error: "Forbidden: Access denied" }, { status: 403 });
+      }
+      if (userIdParam) {
+        const currentUserDB = await getUserByEmail(authUser!.email!);
+        if (!currentUserDB || currentUserDB.id !== Number(userIdParam)) {
+          return NextResponse.json({ success: false, error: "Forbidden: Access denied" }, { status: 403 });
+        }
+      }
+    }
+
     let user = null
     if (email) {
       user = await getUserByEmail(email)
@@ -99,6 +119,18 @@ export async function PUT(request: NextRequest) {
 
     if (!email) {
       return NextResponse.json({ success: false, error: "Thiếu email" }, { status: 400 })
+    }
+
+    const { verifyFirebaseToken, requireAdmin } = await import("@/lib/api-auth");
+    const authUser = await verifyFirebaseToken(request);
+    const isAdmin = await requireAdmin(request).catch(() => false);
+
+    if (!authUser && !isAdmin) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!isAdmin && email.toLowerCase() !== authUser?.email?.toLowerCase()) {
+      return NextResponse.json({ success: false, error: "Forbidden: Access denied" }, { status: 403 });
     }
 
     const user = await getUserByEmail(email)

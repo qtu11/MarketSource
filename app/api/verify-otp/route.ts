@@ -26,7 +26,8 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const { email, otp } = validation.data;
+        let { email, otp } = validation.data;
+        email = email.trim().toLowerCase();
 
         const user = await getUserByEmail(email);
         if (!user) {

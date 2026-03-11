@@ -14,7 +14,8 @@ export const runtime = 'nodejs'
  */
 export async function POST(request: NextRequest) {
   try {
-    const { email, deviceInfo, ipAddress: providedIp } = await request.json();
+    let { email, deviceInfo, ipAddress: providedIp } = await request.json();
+    email = email?.trim().toLowerCase();
 
     if (!email) {
       return NextResponse.json(

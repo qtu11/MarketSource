@@ -16,7 +16,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { email, password, captchaToken } = body;
+    let { email, password, captchaToken } = body;
+    email = email?.trim().toLowerCase();
 
     // ✅ hCaptcha verification (Bypass in development)
     const isDev = process.env.NODE_ENV === 'development';

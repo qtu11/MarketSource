@@ -43,7 +43,8 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const { email, password, deviceInfo, ipAddress } = validation.data
+    let { email, password, deviceInfo, ipAddress } = validation.data
+    email = email.trim().toLowerCase()
 
     // 1. Kiểm tra Admin qua Database trước
     const dbUser = await getUserByEmail(email)

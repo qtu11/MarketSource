@@ -680,12 +680,10 @@ export async function approveWithdrawalAndUpdateBalanceMySQL(
     if (Math.abs(Number(withdrawal.amount) - Number(amount)) > 0.01) throw new Error("Amount mismatch with withdrawal")
 
     const [userRows]: any = await conn.query(
-      "SELECT balance FROM users WHERE id = ? FOR UPDATE",
+      "SELECT balance FROM users WHERE id = ?",
       [userId],
     )
     const currentBalance = Number(userRows[0]?.balance || 0)
-    if (currentBalance < amount) throw new Error("Insufficient balance")
-    const newBalance = currentBalance - amount
 
     await conn.query(
       `UPDATE withdrawals
@@ -696,12 +694,7 @@ export async function approveWithdrawalAndUpdateBalanceMySQL(
       [approvedBy, withdrawalId],
     )
 
-    await conn.query(
-      "UPDATE users SET balance = ?, updated_at = NOW() WHERE id = ?",
-      [newBalance, userId],
-    )
-
-    return { success: true, newBalance }
+    return { success: true, newBalance: currentBalance }
   })
 }
 

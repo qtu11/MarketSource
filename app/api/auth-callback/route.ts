@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getClientIP } from '@/lib/api-auth';
 import { createOrUpdateUser } from '@/lib/database-mysql';
 import { logger } from '@/lib/logger';
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 export const runtime = 'nodejs'
 
@@ -45,6 +47,15 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // ✅ SECURITY FIX: Require valid NextAuth session to prevent Account Takeover
+    const session = await getServerSession(authOptions);
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: No active session' },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
     const {
       email,
@@ -60,6 +71,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'Email and UID are required' },
         { status: 400 }
+      );
+    }
+
+    // ✅ SECURITY FIX: Verify the requested email matches the authenticated session email
+    if (session.user.email?.toLowerCase() !== email.toLowerCase()) {
+      logger.warn('Auth callback email mismatch spoofing attempt', { 
+        sessionEmail: session.user.email, 
+        requestEmail: email 
+      });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Email mismatch' },
+        { status: 403 }
       );
     }
 
