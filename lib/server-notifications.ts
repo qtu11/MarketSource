@@ -7,8 +7,8 @@ type DeviceInfo = {
   os?: string;
 };
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || process.env.NEXT_PUBLIC_TELEGRAM_CHAT_ID;
 
 function escapeHTML(str: string): string {
   if (!str) return '';
@@ -33,7 +33,10 @@ function formatDeviceInfo(deviceInfo?: DeviceInfo) {
 }
 
 async function sendTelegramMessage(message: string) {
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID || process.env.NEXT_PUBLIC_TELEGRAM_CHAT_ID;
+
+  if (!botToken || !chatId) {
     logger.warn('Telegram credentials missing, skip notification');
     return;
   }
@@ -42,11 +45,11 @@ async function sendTelegramMessage(message: string) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
 
-    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
+        chat_id: chatId,
         text: message,
         parse_mode: 'HTML',
       }),
@@ -92,7 +95,7 @@ export async function notifyDepositRequest(payload: {
 
   await sendTelegramMessage(message);
 
-  const adminWhatsapp = process.env.ADMIN_WHATSAPP || '';
+  const adminWhatsapp = process.env.ADMIN_WHATSAPP || process.env.NEXT_PUBLIC_ADMIN_WHATSAPP || '';
   if (adminWhatsapp) {
     try {
       await sendWhatsAppMessage({
@@ -130,7 +133,7 @@ export async function notifyWithdrawalRequest(payload: {
 
   await sendTelegramMessage(message);
 
-  const adminWhatsapp = process.env.ADMIN_WHATSAPP || '';
+  const adminWhatsapp = process.env.ADMIN_WHATSAPP || process.env.NEXT_PUBLIC_ADMIN_WHATSAPP || '';
   if (adminWhatsapp) {
     try {
       await sendWhatsAppMessage({
@@ -159,7 +162,7 @@ export async function notifyPasswordReset(payload: {
 
   await sendTelegramMessage(message);
 
-  const adminWhatsapp = process.env.ADMIN_WHATSAPP || '';
+  const adminWhatsapp = process.env.ADMIN_WHATSAPP || process.env.NEXT_PUBLIC_ADMIN_WHATSAPP || '';
   if (adminWhatsapp) {
     try {
       await sendWhatsAppMessage({

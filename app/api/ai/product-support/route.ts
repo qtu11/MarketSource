@@ -40,8 +40,8 @@ export async function POST(request: NextRequest) {
 
     const { question, productId, productName } = validation.data;
 
-    // Check if Gemini API key is available
-    if (!process.env.GEMINI_API_KEY) {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    if (!apiKey) {
       return NextResponse.json({
         success: false,
         error: 'AI service not configured. Please set GEMINI_API_KEY in environment variables.'
@@ -92,7 +92,8 @@ async function generateProductSupportResponse(
 ): Promise<{ answer: string; suggestions?: string[] }> {
   try {
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    const genAI = new GoogleGenerativeAI(apiKey!);
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     // Lấy danh sách sản phẩm phổ biến để suggest

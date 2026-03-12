@@ -3,7 +3,7 @@
  * Verify hCaptcha tokens on API routes
  */
 
-const HCAPTCHA_SECRET = process.env.HCAPTCHA_SECRET_KEY || '';
+const HCAPTCHA_SECRET = process.env.HCAPTCHA_SECRET_KEY || process.env.NEXT_PUBLIC_HCAPTCHA_SECRET || '';
 const HCAPTCHA_VERIFY_URL = 'https://api.hcaptcha.com/siteverify';
 
 export interface HCaptchaVerifyResult {

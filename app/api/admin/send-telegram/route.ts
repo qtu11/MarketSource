@@ -32,8 +32,8 @@ export async function POST(request: NextRequest) {
     }
 
     // ✅ Server-side only - không expose ra client
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const defaultChatId = process.env.TELEGRAM_CHAT_ID;
+    const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN;
+    const defaultChatId = process.env.TELEGRAM_CHAT_ID || process.env.NEXT_PUBLIC_TELEGRAM_CHAT_ID;
 
     if (!botToken) {
       logger.error('❌ Telegram bot token not configured');

@@ -16,10 +16,10 @@ let smtpTransporter: nodemailer.Transporter | null = null;
 function getSmtpTransporter(): nodemailer.Transporter | null {
   if (smtpTransporter) return smtpTransporter;
 
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT || '465');
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const host = process.env.SMTP_HOST || process.env.NEXT_PUBLIC_SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || process.env.NEXT_PUBLIC_SMTP_PORT || '465');
+  const user = process.env.SMTP_USER || process.env.NEXT_PUBLIC_SMTP_USER;
+  const pass = process.env.SMTP_PASS || process.env.NEXT_PUBLIC_SMTP_PASS;
 
   if (!host || !user || !pass || pass === 'your_app_password_here') {
     console.warn('⚠️ SMTP chưa được cấu hình đầy đủ. Sẽ fallback sang Resend hoặc Console.');
@@ -49,7 +49,7 @@ async function getResend() {
     const Resend = resendModule.Resend || (resendModule as any).default;
     if (!Resend) throw new Error('Resend not found');
 
-    resend = new Resend(process.env.RESEND_API_KEY);
+    resend = new Resend(process.env.RESEND_API_KEY || process.env.NEXT_PUBLIC_RESEND_API_KEY);
     return resend;
   } catch (error) {
     console.warn('Resend not available, using console fallback');

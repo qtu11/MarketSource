@@ -321,6 +321,7 @@ export async function apiGet(endpoint: string, params?: Record<string, any>) {
 
   return apiRequest(url.toString(), {
     method: 'GET',
+    credentials: 'include',
   });
 }
 
@@ -330,7 +331,9 @@ export async function apiGet(endpoint: string, params?: Record<string, any>) {
 export async function apiPost(endpoint: string, data: any) {
   return apiRequest(endpoint, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
+    credentials: 'include',
   });
 }
 
@@ -340,7 +343,9 @@ export async function apiPost(endpoint: string, data: any) {
 export async function apiPut(endpoint: string, data: any) {
   return apiRequest(endpoint, {
     method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
+    credentials: 'include',
   });
 }
 
@@ -350,6 +355,7 @@ export async function apiPut(endpoint: string, data: any) {
 export async function apiDelete(endpoint: string) {
   return apiRequest(endpoint, {
     method: 'DELETE',
+    credentials: 'include',
   });
 }
 

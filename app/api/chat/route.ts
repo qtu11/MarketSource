@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
     // ✅ Gemini Auto-Reply - Chỉ khi KHÁCH gửi tin nhắn (không phải admin)
     // Và không có admin nào đang login để trả lời realtime (optional logic)
     let autoReplyMessage: any = null;
-    if (!isAdmin && process.env.GEMINI_API_KEY && process.env.ENABLE_AUTO_REPLY === 'true') {
+    if (!isAdmin && (process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY) && process.env.ENABLE_AUTO_REPLY === 'true') {
       try {
         autoReplyMessage = await generateAutoReply(sanitizedMessage, targetUserId);
 
@@ -264,12 +264,13 @@ export async function GET(request: NextRequest) {
  */
 async function generateAutoReply(userMessage: string, userId: number): Promise<string | null> {
   try {
-    if (!process.env.GEMINI_API_KEY) {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    if (!apiKey) {
       return getSmartFallbackReply(userMessage);
     }
 
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     // Lấy lịch sử chat gần đây để context

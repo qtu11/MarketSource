@@ -27,8 +27,8 @@ export async function POST(request: NextRequest) {
 
     const { productName, category, features } = validation.data;
 
-    // Check if Gemini API key is available
-    if (!process.env.GEMINI_API_KEY) {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    if (!apiKey) {
       return NextResponse.json({
         success: false,
         error: 'AI service not configured. Please set GEMINI_API_KEY in environment variables.'
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
 
     try {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
-      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+      const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
       const prompt = `Generate a professional product description for a source code product named "${productName}"${category ? ` in the ${category} category` : ''}.
