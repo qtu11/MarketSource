@@ -3,7 +3,7 @@ import { getUserByEmail, deletePasswordResetTokens, createPasswordResetTokenReco
 import { getClientIP } from '@/lib/api-auth';
 import crypto from 'crypto';
 import { logger } from '@/lib/logger';
-import { notifyPasswordReset } from '@/lib/server-notifications';
+import { notifyPasswordResetRequest } from '@/lib/notifications';
 import { sendOtpEmail } from '@/lib/email';
 
 export const runtime = 'nodejs'
@@ -66,14 +66,16 @@ export async function POST(request: NextRequest) {
     }
 
     // ✅ Gửi thông báo nội bộ (Telegram/WhatsApp) - fire and forget
-    const ipAddress = providedIp || getClientIP(request);
-    notifyPasswordReset({
-      email,
-      ipAddress,
-      deviceInfo,
-    }).catch((error) => {
-      logger.warn('Failed to send password reset notification', { error: error?.message });
-    });
+    const ipAddress = providedIp || getClientIP(request); // Telegram notification
+    try {
+      await notifyPasswordResetRequest({
+        userEmail: email,
+        ipAddress,
+        deviceInfo
+      });
+    } catch (error) {
+      logger.error('Failed to send Telegram for password reset', error);
+    }
 
     return NextResponse.json({
       success: true,

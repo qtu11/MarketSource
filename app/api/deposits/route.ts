@@ -3,7 +3,7 @@ import { getDeposits, createDeposit, updateDepositStatus } from '@/lib/database-
 import { verifyFirebaseToken, requireAdmin, validateRequest } from '@/lib/api-auth'
 import { checkRateLimitAndRespond } from '@/lib/rate-limit'
 import { depositSchema, updateDepositStatusSchema } from '@/lib/validation-schemas'
-import { notifyDepositRequest } from '@/lib/server-notifications'
+import { notifyDepositRequest } from '@/lib/notifications'
 import { logger } from '@/lib/logger'
 import { getUserIdByEmail, getUserByIdMySQL, queryOne } from '@/lib/database-mysql'
 

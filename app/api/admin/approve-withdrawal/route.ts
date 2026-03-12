@@ -180,7 +180,10 @@ export async function POST(request: NextRequest) {
 
     // Send notification
     if (action === 'approve') {
-      const message = `✅ <b>RÚT TIỀN ĐÃ ĐƯỢC DUYỆT</b>
+      try {
+        const { sendTelegramNotification } = await import('@/lib/notifications');
+        const { logger } = await import('@/lib/logger');
+        const message = `✅ <b>RÚT TIỀN ĐÃ ĐƯỢC DUYỆT</b>
 
 💰 Số tiền: ${amount.toLocaleString('vi-VN')}đ
 📝 Withdrawal ID: ${withdrawalId}
@@ -188,25 +191,10 @@ export async function POST(request: NextRequest) {
 
 <i>Tiền đã được trừ khỏi tài khoản người dùng.</i>`;
 
-      // ✅ SECURITY FIX: Chỉ dùng server-side env vars (không expose ra client)
-      const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN;
-      const chatId = process.env.TELEGRAM_CHAT_ID || process.env.NEXT_PUBLIC_TELEGRAM_CHAT_ID;
-
-      if (botToken && chatId) {
-        try {
-          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: chatId,
-              text: message,
-              parse_mode: 'HTML'
-            })
-          });
-        } catch (error) {
-          const { logger } = await import('@/lib/logger');
-          logger.error('Telegram notification failed', error, { context: 'withdrawal-approval' });
-        }
+        await sendTelegramNotification(message);
+      } catch (error) {
+        const { logger } = await import('@/lib/logger');
+        logger.error('Telegram notification failed', error, { context: 'withdrawal-approval' });
       }
     }
 

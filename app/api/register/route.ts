@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
       logger.error('Failed to send welcome email', e);
     }
     try {
-      const { notifyNewUserRegistration } = await import('@/lib/server-notifications');
+      const { notifyNewUserRegistration } = await import('@/lib/notifications');
       notifyNewUserRegistration({
         userName: name,
         userEmail: email,

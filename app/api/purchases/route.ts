@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getPurchases, createPurchase, getProductById, getUserIdByEmail, normalizeUserIdMySQL } from "@/lib/database-mysql"
 import { verifyFirebaseToken, validateRequest } from "@/lib/api-auth"
 import { purchaseSchema } from "@/lib/validation-schemas"
-import { notifyPurchaseSuccess } from "@/lib/server-notifications"
+import { notifyPurchaseSuccess } from "@/lib/notifications"
 import { logger } from "@/lib/logger"
 
 export const runtime = 'nodejs'

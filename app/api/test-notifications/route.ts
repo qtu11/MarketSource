@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { sendDepositNotification, sendWithdrawalNotification } from '@/lib/notifications'
+import { notifyDepositRequest, notifyWithdrawalRequest } from '@/lib/notifications'
 import { logger } from '@/lib/logger'
 
 export const runtime = 'nodejs'
@@ -7,32 +7,37 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    // Test deposit notification
-    const depositData = {
-      userName: "Test User",
-      userEmail: "test@example.com",
-      amount: 100000,
-      method: "MB Bank",
-      transactionId: "TXN123456789",
-      requestTimeFormatted: new Date().toLocaleString("vi-VN")
+    // This is a test endpoint to trigger notifications.
+    // In a real application, these would be triggered by actual events.
+
+    // You can uncomment one of the cases below to test a specific notification.
+    const testCase = 'deposit' as any // Change to 'withdrawal' to test withdrawal notification
+
+    switch (testCase) {
+      case 'deposit':
+        await notifyDepositRequest({
+          userName: 'Test User',
+          userEmail: 'test@example.com',
+          amount: 100000,
+          method: 'Momo',
+          transactionId: 'TEST-123'
+        })
+        break
+      case 'withdrawal':
+        await notifyWithdrawalRequest({
+          userName: 'Test User',
+          userEmail: 'test@example.com',
+          amount: 50000,
+          bankName: 'Vietcombank',
+          accountNumber: '123456789',
+          accountName: 'TEST USER'
+        })
+        break
+      default:
+        // No specific test case selected, do nothing or log a message
+        logger.info('No specific notification test case selected.', { endpoint: '/api/test-notifications' });
+        break;
     }
-
-    await sendDepositNotification(depositData)
-
-    // Test withdrawal notification
-    const withdrawalData = {
-      userName: "Test User",
-      userEmail: "test@example.com",
-      amount: 50000,
-      fee: 5000,
-      receiveAmount: 45000,
-      bankName: "Vietcombank",
-      accountNumber: "1234567890",
-      accountName: "TEST USER",
-      requestTimeFormatted: new Date().toLocaleString("vi-VN")
-    }
-
-    await sendWithdrawalNotification(withdrawalData)
 
     return NextResponse.json({
       success: true,

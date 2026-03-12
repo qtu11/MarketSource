@@ -3,7 +3,7 @@ import { getWithdrawals, createWithdrawal, updateWithdrawalStatus } from '@/lib/
 import { verifyFirebaseToken, requireAdmin, validateRequest } from '@/lib/api-auth'
 import { checkRateLimitAndRespond } from '@/lib/rate-limit'
 import { withdrawalSchema, updateWithdrawalStatusSchema } from '@/lib/validation-schemas'
-import { notifyWithdrawalRequest } from '@/lib/server-notifications'
+import { notifyWithdrawalRequest } from '@/lib/notifications'
 import { logger } from '@/lib/logger'
 import { getUserIdByEmail, getUserByIdMySQL, queryOne } from '@/lib/database-mysql'
 

@@ -53,42 +53,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call Telegram API
-    const telegramResponse = await fetch(
-      `https://api.telegram.org/bot${botToken}/sendMessage`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: targetChatId,
-          text: message,
-          parse_mode: 'HTML',
-        }),
-      }
-    );
+    // Call Telegram helper
+    const { sendTelegramNotification } = await import('@/lib/notifications');
+    const success = await sendTelegramNotification(message, targetChatId).catch((error) => {
+      logger.error('Telegram notification failed', error, { context: 'admin-send-telegram' });
+      return false; // Indicate failure
+    });
 
-    if (!telegramResponse.ok) {
-      const errorData = await telegramResponse.json().catch(() => ({}));
-      logger.error('❌ Telegram API error', undefined, { errorData });
-      
-      // ✅ SECURITY: Không expose error details trong production
-      const isDev = process.env.NODE_ENV === 'development';
+    if (!success) {
       return NextResponse.json(
         {
           success: false,
-          error: isDev 
-            ? `Telegram API error: ${JSON.stringify(errorData)}`
-            : 'Failed to send Telegram message'
+          error: 'Failed to send Telegram message'
         },
-        { status: telegramResponse.status }
+        { status: 500 }
       );
     }
 
-    const result = await telegramResponse.json();
-
     return NextResponse.json({
       success: true,
-      messageId: result.result?.message_id,
+      message: 'Telegram notification sent successfully'
     });
   } catch (error: any) {
     logger.error('❌ Error sending Telegram message', error);
