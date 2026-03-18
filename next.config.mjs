@@ -63,21 +63,45 @@ const nextConfig = {
   },
   images: {
     remotePatterns: [
+      // ✅ SECURITY FIX: Whitelist cụ thể thay vì wildcard (chống SSRF)
       {
         protocol: 'https',
-        hostname: '**',
+        hostname: '*.supabase.co',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.firebasestorage.app',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.googleusercontent.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.githubusercontent.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.vercel.app',
+      },
+      {
+        protocol: 'https',
+        hostname: 'lh3.googleusercontent.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'avatars.githubusercontent.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'files.catbox.moe',
       },
     ],
     // ✅ FIX: Cloudflare Pages chưa hỗ trợ Image Optimization của Next.js
-    // nên buộc phải unoptimized để dùng CDN của Cloudflare
     unoptimized: isCloudflarePages || process.env.NEXT_IMAGE_UNOPTIMIZED === 'true',
   },
   // ✅ FIX: Next.js tự động expose NEXT_PUBLIC_* variables
-  // Chỉ cần config server-side only variables nếu thực sự cần
-  // (Thường không cần vì có thể access trực tiếp từ process.env)
-  // env: {
-  //   // Chỉ thêm nếu cần expose server-side vars cho client (không nên)
-  // },
+  // env: {},
   experimental: {
     optimizePackageImports: ['lucide-react', 'date-fns'],
   },
@@ -89,10 +113,24 @@ const nextConfig = {
       transform: 'date-fns/{{member}}',
     },
   },
+  // ✅ SECURITY: Thêm security headers
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-XSS-Protection', value: '1; mode=block' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+        ],
+      },
+    ]
+  },
   // ✅ FIX: Redirects để xử lý các requests không tồn tại
   async rewrites() {
     return [
-      // Redirect icon-192.png to logoqtusdev.png
       {
         source: '/icon-192.png',
         destination: '/logoqtusdev.png',

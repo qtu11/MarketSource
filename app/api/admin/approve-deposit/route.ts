@@ -154,6 +154,22 @@ export async function POST(request: NextRequest) {
         const { logger } = await import('@/lib/logger');
         logger.warn('Failed to create notification (non-critical)', { error: notifError, userId: dbUserId });
       }
+
+      // ✅ NEW: Gửi email thông báo nạp tiền thành công cho khách hàng
+      try {
+        const recipientEmail = userEmail || (await (async () => {
+          const { getUserByIdMySQL } = await import('@/lib/database-mysql');
+          const user = await getUserByIdMySQL(dbUserId);
+          return user?.email;
+        })());
+        if (recipientEmail) {
+          const { sendDepositApprovalEmail } = await import('@/lib/email');
+          await sendDepositApprovalEmail(recipientEmail, amount, result.newBalance);
+        }
+      } catch (emailError) {
+        const { logger } = await import('@/lib/logger');
+        logger.warn('Failed to send deposit approval email (non-critical)', { error: emailError, userId: dbUserId });
+      }
     } else if (action === 'reject') {
       // Normalize userId cho reject action
       const dbUserIdForReject = await normalizeUserId(userId, userEmail);

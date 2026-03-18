@@ -271,10 +271,28 @@ function AdminPageContent() {
         })));
       }
 
-      // 4. Cập nhật Notifications (từ localStorage cho tạm thời)
-      const { getLocalStorage } = await import('@/lib/localStorage-utils');
-      const loadedNotifications = getLocalStorage("adminNotifications", []);
-      setNotifications(loadedNotifications);
+      // ✅ BUG #10 FIX: Load notifications từ DB thay vì localStorage
+      try {
+        const notificationsResult = await apiGet('/api/notifications');
+        const dbNotifications = notificationsResult.notifications || [];
+        // Merge với localStorage nếu cần (backward compat)
+        const { getLocalStorage } = await import('@/lib/localStorage-utils');
+        const localNotifications = getLocalStorage("adminNotifications", []);
+        // Dùng DB làm nguồn chính, bổ sung từ localStorage nếu có id chưa có
+        const dbIds = new Set(dbNotifications.map((n: any) => n.id));
+        const merged = [
+          ...dbNotifications,
+          ...(localNotifications as any[]).filter((n: any) => !dbIds.has(n.id)),
+        ];
+        setNotifications(merged);
+      } catch (notifErr) {
+        const { logger: _l } = await import('@/lib/logger');
+        _l.warn('Admin: Failed to load notifications from DB, using localStorage', { error: notifErr });
+        const { getLocalStorage } = await import('@/lib/localStorage-utils');
+        const loadedNotifications = getLocalStorage("adminNotifications", []);
+        setNotifications(loadedNotifications);
+      }
+
 
       // ✅ FIX: Dispatch các sự kiện để trigger UI cập nhật nếu cần
       if (typeof window !== 'undefined') {
@@ -294,32 +312,31 @@ function AdminPageContent() {
   useEffect(() => {
     const checkAdminAuth = async () => {
       try {
-        // ✅ FIX: Verify admin token from cookie instead of just localStorage
         const verifyResponse = await fetch('/api/admin/verify', {
           method: 'GET',
-          credentials: 'include', // Include cookies
-        })
+          credentials: 'include', // ✅ BUG FIX: Bao gồm cookies để backend nhận được admin-token
+          headers: {
+            'Cache-Control': 'no-cache',
+          },
+        });
 
         if (verifyResponse.ok) {
           const data = await verifyResponse.json()
           if (data.success && data.user) {
             setAdminUser(data.user)
-            // Sync localStorage for backward compatibility
-            const { setLocalStorage } = await import('@/lib/localStorage-utils')
-            setLocalStorage("adminAuth", "true")
-            setLocalStorage("adminUser", JSON.stringify(data.user))
-
-            // ✅ FIX: Lưu lại CSRF token mới từ server (nếu có) để client gọi API không bị lỗi
+            setIsLoading(false)
             if (data.csrfToken) {
+              const { setLocalStorage } = await import('@/lib/localStorage-utils')
               setLocalStorage("csrf-token", data.csrfToken)
             }
-
-            setIsLoading(false)
             return
           }
+        } else if (verifyResponse.status === 401) {
+          // ✅ FIX: Nếu 401 thì chắc chắn token sai/hết hạn, bắt buộc login lại
+          throw new Error('Unauthorized');
         }
 
-        // Fallback: Check localStorage (for backward compatibility)
+        // Nếu error network (ko phải 401) thì mới fallback localStorage
         const { getLocalStorage } = await import('@/lib/localStorage-utils')
         const isAdminLoggedIn = getLocalStorage<string>("adminAuth", "false") === "true"
         const adminUserStr = getLocalStorage<string | null>("adminUser", null)
@@ -331,7 +348,7 @@ function AdminPageContent() {
             setIsLoading(false)
             return
           } catch (parseError) {
-            logger.error('Error parsing admin user', parseError)
+            console.error('Error parsing admin user from localStorage:', parseError)
           }
         }
 
@@ -705,14 +722,14 @@ function AdminPageContent() {
         processed: true,
       };
 
-      // Save updated deposit
-      saveDeposit(approvedDeposit);
+      // ✅ BUG #9 FIX: Không gọi saveDeposit() vì apiPost('/api/admin/approve-deposit') đã xử lý mọi thứ trên server.
+      // saveDeposit() sẽ gọi PUT /api/deposits thêm lần nữa → double-approve (bị chặn bởi status check nhưng vẫn tốn request).
+      // Chỉ cần dispatch events để UI reload.
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('depositsChange', { detail: [...getDeposits().filter((d: any) => d.id !== deposit.id), approvedDeposit] }));
-        // ✅ FIX: Dispatch events theo báo cáo để dashboard tự động refresh
         window.dispatchEvent(new CustomEvent('depositsUpdated'));
         window.dispatchEvent(new CustomEvent('userUpdated'));
       }
+
 
       // Send Telegram notification
       try {

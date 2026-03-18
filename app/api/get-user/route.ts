@@ -50,20 +50,34 @@ export async function GET(request: NextRequest) {
     }
 
     // Fallback to PostgreSQL
-    // uid có thể là email hoặc numeric ID
+    // uid có thể là email, numeric ID hoặc Firebase UID với prefix 'email_'
     let result = null;
 
     // Try as email first
     if (uid.includes('@')) {
       result = await getUserByEmail(uid);
+    } else if (uid.startsWith('email_')) {
+      // ✅ BUG #8 FIX: Firebase UID dạng 'email_<dbId>' được tạo bởi email auth fallback
+      const numericPart = uid.replace('email_', '');
+      const userIdNum = parseInt(numericPart);
+      if (!isNaN(userIdNum)) {
+        const { getUserById } = await import('@/lib/database-mysql');
+        result = await getUserById(userIdNum);
+      }
     } else {
       // Try as numeric ID
       const userIdNum = parseInt(uid);
       if (!isNaN(userIdNum)) {
         const { getUserById } = await import('@/lib/database-mysql');
         result = await getUserById(userIdNum);
+      } else {
+        // ✅ BUG #8 FIX: Firebase UID thuần (string dài) - thử tìm qua email nếu authUser đã biết email
+        if (authUser?.email) {
+          result = await getUserByEmail(authUser.email);
+        }
       }
     }
+
 
     if (!result) {
       return NextResponse.json(

@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { getToken } from 'next-auth/jwt'
 
 /**
- * Middleware for request handling
- * Note: Next.js 16+ deprecated "middleware" convention in favor of "proxy"
- * This is a low-priority warning and doesn't affect functionality
- * Can be migrated to proxy convention in future if needed
+ * ✅ SECURITY FIX: Middleware with authentication guard
+ * - Bảo vệ /admin/* routes (chỉ admin)
+ * - Bảo vệ /dashboard/* routes (user đã đăng nhập)
+ * - Block Vite-related requests
  */
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // ✅ FIX: Ignore Vite-related requests (có thể từ browser extension hoặc cache)
@@ -18,7 +19,6 @@ export function middleware(request: NextRequest) {
     pathname.includes('vite.svg') ||
     pathname.startsWith('/@')
   ) {
-    // Return 404 ngay lập tức, không compile
     return new NextResponse(null, { status: 404 })
   }
 
@@ -27,7 +27,68 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/logoqtusdev.png', request.url))
   }
 
-  return NextResponse.next()
+  // ✅ SECURITY: Bảo vệ /admin routes — chỉ cho admin
+  if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/login')) {
+    try {
+      const token = await getToken({
+        req: request,
+        secret: process.env.NEXTAUTH_SECRET,
+      })
+
+      if (!token) {
+        // Kiểm tra admin-token cookie (JWT login riêng của admin)
+        const adminToken = request.cookies.get('admin-token')?.value
+        if (!adminToken) {
+          const loginUrl = new URL('/admin/login', request.url)
+          loginUrl.searchParams.set('callbackUrl', pathname)
+          return NextResponse.redirect(loginUrl)
+        }
+      }
+    } catch (error) {
+      // Nếu token check lỗi → redirect về login
+      const loginUrl = new URL('/admin/login', request.url)
+      loginUrl.searchParams.set('callbackUrl', pathname)
+      return NextResponse.redirect(loginUrl)
+    }
+  }
+
+  // ✅ SECURITY: Bảo vệ /dashboard routes — user phải đăng nhập
+  if (pathname.startsWith('/dashboard')) {
+    try {
+      const token = await getToken({
+        req: request,
+        secret: process.env.NEXTAUTH_SECRET,
+      })
+
+      if (!token) {
+        // Kiểm tra auth-token cookie hoặc session-token
+        const authToken = request.cookies.get('auth-token')?.value
+        const sessionToken = request.cookies.get('next-auth.session-token')?.value
+        const secureSessionToken = request.cookies.get('__Secure-next-auth.session-token')?.value
+
+        if (!authToken && !sessionToken && !secureSessionToken) {
+          const loginUrl = new URL('/auth/login', request.url)
+          loginUrl.searchParams.set('callbackUrl', pathname)
+          return NextResponse.redirect(loginUrl)
+        }
+      }
+    } catch (error) {
+      const loginUrl = new URL('/auth/login', request.url)
+      loginUrl.searchParams.set('callbackUrl', pathname)
+      return NextResponse.redirect(loginUrl)
+    }
+  }
+
+  // ✅ SECURITY: Thêm security headers
+  const response = NextResponse.next()
+
+  response.headers.set('X-Content-Type-Options', 'nosniff')
+  response.headers.set('X-Frame-Options', 'DENY')
+  response.headers.set('X-XSS-Protection', '1; mode=block')
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+
+  return response
 }
 
 export const config = {
@@ -42,4 +103,3 @@ export const config = {
     '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
 }
-

@@ -39,7 +39,14 @@ export const authOptions: NextAuthOptions = {
       if (account && user) {
         token.id = user.id || (user as any).uid || account.providerAccountId;
         token.provider = account.provider;
-        token.role = (user as any).role || "user";
+        // ✅ SECURITY FIX: Lookup role từ DB thay vì hardcode 'user'
+        try {
+          const { getUserByEmailMySQL } = await import("@/lib/database-mysql");
+          const dbUser = await getUserByEmailMySQL(user.email || "");
+          token.role = dbUser?.role || "user";
+        } catch {
+          token.role = (user as any).role || "user";
+        }
       }
       return token;
     },

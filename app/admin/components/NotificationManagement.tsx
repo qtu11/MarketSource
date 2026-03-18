@@ -327,7 +327,7 @@ export function NotificationManagement() {
 
         {/* Danh sách - 7 columns */}
         <Card className="lg:col-span-7 border-slate-200 dark:border-slate-800 shadow-xl glass-panel">
-          <Tabs defaultValue="all" className="w-full">
+          <Tabs defaultValue="all" onValueChange={(value) => setFilterType(value)} className="w-full">
             <CardHeader className="border-b border-white/10 p-0">
               <div className="px-6 pt-6 pb-2">
                 <CardTitle className="text-lg flex items-center gap-2">

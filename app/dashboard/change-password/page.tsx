@@ -80,7 +80,7 @@ export default function ChangePasswordPage() {
       const currentUser = JSON.parse(localStorage.getItem("currentUser") || "{}")
       const deviceInfo = getDeviceInfo()
       const ipAddress = await getIPAddress()
-      const result = await changePassword(currentUser.email, newPassword)
+      const result = await changePassword(currentUser.email, newPassword, currentPassword)
       
       if (!result.success) {
         setError("Có lỗi xảy ra khi đổi mật khẩu")

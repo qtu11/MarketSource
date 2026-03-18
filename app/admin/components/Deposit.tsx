@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,13 +21,20 @@ export function Deposit({
   rejectDeposit,
   loadData
 }: DepositProps) {
+  const [showRejected, setShowRejected] = useState(false)
+
+  const filteredDeposits = pendingDeposits.filter(d => {
+    if (showRejected) return true
+    return d.status !== "rejected"
+  })
+
   return (
     <div className="space-y-6">
       <Card className="shadow-md neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              Yêu cầu nạp tiền ({pendingDeposits.filter(d => d.status !== "rejected").length})
+              Yêu cầu nạp tiền ({filteredDeposits.length})
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
                 <span className="text-xs text-muted-foreground">Real-time</span>
@@ -40,13 +48,20 @@ export function Deposit({
             >
               Làm mới
             </Button>
+            <Button
+              size="sm"
+              variant={showRejected ? "default" : "outline"}
+              onClick={() => setShowRejected(!showRejected)}
+              className="text-xs h-7"
+            >
+              {showRejected ? 'Ẩn đã từ chối' : 'Hiện đã từ chối'}
+            </Button>
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {pendingDeposits
-              .filter(d => d.status !== "rejected")
-              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+            {filteredDeposits
+              .sort((a, b) => new Date(b.created_at || b.timestamp || 0).getTime() - new Date(a.created_at || a.timestamp || 0).getTime())
               .map((deposit) => (
                 <div key={deposit.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                   <div className="flex-1">

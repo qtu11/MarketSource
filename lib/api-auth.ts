@@ -43,46 +43,43 @@ export async function verifyFirebaseToken(
   request: NextRequest
 ): Promise<{ uid: string; email: string | null } | null> {
   try {
+    // ✅ FIX SECURITY: Ưu tiên verify session qua NextAuth (chặn spoofing qua X-Email-Auth-Secret)
+    const { getServerSession } = await import('next-auth');
+    const { authOptions } = await import('@/lib/next-auth');
+    const session = await getServerSession(authOptions);
+    if (session && session.user && session.user.email) {
+      return {
+        uid: (session.user as any).id || (session.user as any).uid || session.user.email,
+        email: session.user.email
+      };
+    }
+
     const authHeader = request.headers.get('Authorization');
     const userEmail = request.headers.get('X-User-Email');
     const emailAuthSecret = request.headers.get('X-Email-Auth-Secret');
 
-    // ✅ SECURITY FIX: Email-based auth cho phép cả dev và production
-    // Development: chỉ cần ALLOW_EMAIL_AUTH=true (bypass secret/IP)
-    // Production: BẮT BUỘC có secret match
+    // ✅ SECURITY FIX: Email-based auth CHỈ cho phép trong development mode
+    // Production: LUÔN bắt buộc NextAuth session hoặc Firebase token, KHÔNG CHẤP NHẬN email header
     const ALLOW_EMAIL_AUTH = process.env.ALLOW_EMAIL_AUTH === 'true';
-    const EMAIL_AUTH_SECRET = process.env.EMAIL_AUTH_SECRET;
     const IS_DEVELOPMENT = process.env.NODE_ENV === 'development';
 
-    const EMAIL_AUTH_IP_WHITELIST_RAW = process.env.EMAIL_AUTH_IP_WHITELIST?.trim() || '';
-    const EMAIL_AUTH_IP_WHITELIST = EMAIL_AUTH_IP_WHITELIST_RAW ? EMAIL_AUTH_IP_WHITELIST_RAW.split(',').map(ip => ip.trim()).filter(Boolean) : [];
-    const clientIP = getClientIP(request);
-
-    // IP check: dev localhost = always OK, whitelist trống = allow all
-    const isLocalhost = clientIP === '127.0.0.1' || clientIP === '::1' || clientIP === '::ffff:127.0.0.1';
-    const isIPAllowed = (IS_DEVELOPMENT && isLocalhost) || EMAIL_AUTH_IP_WHITELIST.length === 0 || EMAIL_AUTH_IP_WHITELIST.includes(clientIP);
-
-    // Development: cho phép nếu ALLOW_EMAIL_AUTH=true (bypass secret)
-    // Production: bắt buộc secret match
+    // ✅ SECURITY: Trong production, email auth LUÔN BỊ TẮT bất kể env config
     let canUseEmailAuth = false;
-    if (ALLOW_EMAIL_AUTH) {
-      if (IS_DEVELOPMENT) {
-        // Dev mode: chỉ cần flag, không cần secret/IP
-        canUseEmailAuth = true;
-      } else {
-        // Production: bắt buộc secret match + IP check
-        const isSecretValid = !!EMAIL_AUTH_SECRET && emailAuthSecret === EMAIL_AUTH_SECRET;
-        canUseEmailAuth = isSecretValid && isIPAllowed;
-      }
+    if (IS_DEVELOPMENT && ALLOW_EMAIL_AUTH) {
+      // Chỉ dev mode local mới cho phép email auth (bypass secret check)
+      const clientIP = getClientIP(request);
+      const isLocalhost = clientIP === '127.0.0.1' || clientIP === '::1' || clientIP === '::ffff:127.0.0.1';
+      canUseEmailAuth = isLocalhost;
     }
+    // Production: canUseEmailAuth = false luôn
 
     // ✅ SECURITY: Log email auth attempts bị block
     if (userEmail && !canUseEmailAuth) {
       const { logger } = await import('@/lib/logger');
       logger.warn('Email auth attempt blocked', {
         userEmail,
-        ip: clientIP,
-        reason: !ALLOW_EMAIL_AUTH ? 'flag_disabled' : IS_DEVELOPMENT ? 'dev_unknown' : (!emailAuthSecret ? 'no_secret_header' : 'secret_mismatch')
+        ip: getClientIP(request),
+        reason: !IS_DEVELOPMENT ? 'production_blocked' : 'dev_not_localhost'
       });
     }
 
@@ -129,11 +126,9 @@ export async function verifyFirebaseToken(
           logger.warn('User not found in database', { userEmail });
         }
       } else {
-        // ✅ FIX: Chỉ warning khi thực sự cần thiết, không spam log
+        // ✅ FIX: Chỉ warning khi thực sự cần thiết
         const { logger } = await import('@/lib/logger');
-        if (emailAuthSecret && EMAIL_AUTH_SECRET && emailAuthSecret !== EMAIL_AUTH_SECRET) {
-          logger.warn('Email auth secret mismatch');
-        } else if (!IS_DEVELOPMENT && userEmail) {
+        if (!IS_DEVELOPMENT && userEmail) {
           logger.warn('Email-based auth is disabled in production. Bearer token required.');
         } else if (!ALLOW_EMAIL_AUTH && userEmail && IS_DEVELOPMENT) {
           logger.warn('Email-based auth is disabled. Set ALLOW_EMAIL_AUTH=true to enable.');
@@ -151,52 +146,34 @@ export async function verifyFirebaseToken(
     const admin = await getFirebaseAdmin();
 
     if (!admin) {
-      // ✅ SECURITY FIX: Email-based auth fallback chỉ khi được phép
-      const ALLOW_EMAIL_AUTH = process.env.ALLOW_EMAIL_AUTH === 'true';
-      const IS_DEVELOPMENT = process.env.NODE_ENV === 'development';
-      const EMAIL_AUTH_SECRET = process.env.EMAIL_AUTH_SECRET;
-      const emailAuthSecret = request.headers.get('X-Email-Auth-Secret');
+      // ✅ SECURITY FIX: Email-based auth fallback CHỈ cho dev mode
+      const devMode = process.env.NODE_ENV === 'development';
+      const devEmailAuth = process.env.ALLOW_EMAIL_AUTH === 'true';
 
-      let canUseEmailAuth = false;
-      if (ALLOW_EMAIL_AUTH) {
-        if (IS_DEVELOPMENT) {
-          canUseEmailAuth = true;
-        } else {
-          canUseEmailAuth = !!EMAIL_AUTH_SECRET && emailAuthSecret === EMAIL_AUTH_SECRET;
-        }
-      }
+      if (devMode && devEmailAuth && userEmail) {
+        const ip = getClientIP(request);
+        const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+        if (isLocal) {
+          try {
+            const { checkRateLimit } = await import('@/lib/rate-limit');
+            const rateLimit = await checkRateLimit(`email_auth:${userEmail}:${ip}`, 120, 60);
+            if (!rateLimit.success) return null;
+          } catch { return null; }
 
-      if (canUseEmailAuth && userEmail) {
-        // ✅ Rate limiting
-        try {
-          const { checkRateLimit } = await import('@/lib/rate-limit');
-          const ip = getClientIP(request);
-          const rateLimitKey = `email_auth:${userEmail}:${ip}`;
-          const rateLimit = await checkRateLimit(rateLimitKey, 120, 60);
-
-          if (!rateLimit.success) {
-            return null;
-          }
-        } catch (rateLimitError) {
-          return null;
-        }
-
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (emailRegex.test(userEmail)) {
-          const { getUserIdByEmail } = await import('@/lib/database');
-          const userId = await getUserIdByEmail(userEmail);
-          if (userId) {
-            const { logger } = await import('@/lib/logger');
-            logger.info('Email-based auth successful (DEV ONLY - no Firebase Admin)', { userEmail, userId });
-            return {
-              uid: `email_${userId}`,
-              email: userEmail,
-            };
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (emailRegex.test(userEmail)) {
+            const { getUserIdByEmail } = await import('@/lib/database');
+            const userId = await getUserIdByEmail(userEmail);
+            if (userId) {
+              const { logger } = await import('@/lib/logger');
+              logger.info('Email-based auth (DEV ONLY - no Firebase Admin)', { userEmail, userId });
+              return { uid: `email_${userId}`, email: userEmail };
+            }
           }
         }
       }
       const { logger } = await import('@/lib/logger');
-      logger.warn('Firebase Admin not available. Email-based auth is disabled in production.');
+      logger.warn('Firebase Admin not available. Token required.');
       return null;
     }
 
@@ -208,56 +185,40 @@ export async function verifyFirebaseToken(
       email: decodedToken.email || null,
     };
   } catch (error) {
-    // ✅ SECURITY FIX: Email fallback chỉ khi được phép và có rate limiting
+    // ✅ SECURITY FIX: Token verification failed — email fallback CHỈ cho dev
     const { logger } = await import('@/lib/logger');
     logger.warn('Firebase token verification failed', { error: error instanceof Error ? error.message : error });
 
-    const ALLOW_EMAIL_AUTH = process.env.ALLOW_EMAIL_AUTH === 'true';
-    const IS_DEVELOPMENT = process.env.NODE_ENV === 'development';
-    const EMAIL_AUTH_SECRET = process.env.EMAIL_AUTH_SECRET;
-    const emailAuthSecret = request.headers.get('X-Email-Auth-Secret');
+    const devMode = process.env.NODE_ENV === 'development';
+    const devEmailAuth = process.env.ALLOW_EMAIL_AUTH === 'true';
 
-    let canUseEmailAuth = false;
-    if (ALLOW_EMAIL_AUTH) {
-      if (IS_DEVELOPMENT) {
-        canUseEmailAuth = true;
-      } else {
-        canUseEmailAuth = !!EMAIL_AUTH_SECRET && emailAuthSecret === EMAIL_AUTH_SECRET;
-      }
-    }
+    if (devMode && devEmailAuth) {
+      const ip = getClientIP(request);
+      const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+      if (isLocal) {
+        try {
+          const userEmail = request.headers.get('X-User-Email');
+          if (userEmail) {
+            const { checkRateLimit } = await import('@/lib/rate-limit');
+            const rateLimit = await checkRateLimit(`email_auth:${userEmail}:${ip}`, 120, 60);
+            if (!rateLimit.success) return null;
 
-    if (canUseEmailAuth) {
-      try {
-        const userEmail = request.headers.get('X-User-Email');
-        if (userEmail) {
-          // ✅ Rate limiting
-          const { checkRateLimit } = await import('@/lib/rate-limit');
-          const ip = getClientIP(request);
-          const rateLimitKey = `email_auth:${userEmail}:${ip}`;
-          const rateLimit = await checkRateLimit(rateLimitKey, 120, 60);
-
-          if (!rateLimit.success) {
-            return null;
-          }
-
-          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-          if (emailRegex.test(userEmail)) {
-            const { getUserIdByEmail } = await import('@/lib/database');
-            const userId = await getUserIdByEmail(userEmail);
-            if (userId) {
-              logger.info('Email-based auth successful (DEV ONLY - token error fallback)', { userEmail, userId });
-              return {
-                uid: `email_${userId}`,
-                email: userEmail,
-              };
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (emailRegex.test(userEmail)) {
+              const { getUserIdByEmail } = await import('@/lib/database');
+              const userId = await getUserIdByEmail(userEmail);
+              if (userId) {
+                logger.info('Email-based auth (DEV ONLY - token error fallback)', { userEmail, userId });
+                return { uid: `email_${userId}`, email: userEmail };
+              }
             }
           }
+        } catch (fallbackError) {
+          logger.error('Email fallback failed', fallbackError);
         }
-      } catch (fallbackError) {
-        logger.error('Email fallback also failed', fallbackError);
       }
     } else {
-      logger.warn('Email-based auth fallback is disabled');
+      logger.warn('Email auth fallback disabled (production)');
     }
     return null;
   }

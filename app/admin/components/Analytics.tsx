@@ -27,23 +27,37 @@ export function Analytics({ users, products, purchases, deposits, withdrawals }:
   const [timeRange, setTimeRange] = useState("7d")
 
   // Filter data by time range
-  const filterByTimeRange = useCallback((data: any[], dateField: string = "createdAt") => {
+  const filterByTimeRange = useCallback((data: any[], dateFields: string[] = ["createdAt"]) => {
     const now = new Date()
     const days = timeRange === "7d" ? 7 : timeRange === "30d" ? 30 : timeRange === "90d" ? 90 : 365
     const startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
     
     return data.filter(item => {
-      const itemDate = new Date(item[dateField])
-      return itemDate >= startDate
+      // Find the first valid date field
+      let dateValue = null;
+      for (const field of dateFields) {
+        if (item[field]) {
+          dateValue = item[field];
+          break;
+        }
+      }
+      
+      if (!dateValue && item.created_at) dateValue = item.created_at;
+      if (!dateValue && item.timestamp) dateValue = item.timestamp;
+      
+      if (!dateValue) return false;
+
+      const itemDate = new Date(dateValue)
+      return !isNaN(itemDate.getTime()) && itemDate >= startDate
     })
   }, [timeRange])
 
   // Calculate analytics data
   const analytics = useMemo(() => {
-    const filteredUsers = filterByTimeRange(users)
-    const filteredPurchases = filterByTimeRange(purchases, "timestamp")
-    const filteredDeposits = filterByTimeRange(deposits, "timestamp")
-    const filteredWithdrawals = filterByTimeRange(withdrawals, "timestamp")
+    const filteredUsers = filterByTimeRange(users, ["createdAt", "joinedAt", "registrationTime"])
+    const filteredPurchases = filterByTimeRange(purchases, ["timestamp", "purchaseDate", "created_at"])
+    const filteredDeposits = filterByTimeRange(deposits, ["timestamp", "created_at"])
+    const filteredWithdrawals = filterByTimeRange(withdrawals, ["timestamp", "created_at"])
 
     // Revenue analytics
     const totalRevenue = filteredPurchases.reduce((sum, p) => sum + (p.amount || 0), 0)

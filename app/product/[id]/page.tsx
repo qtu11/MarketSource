@@ -223,7 +223,22 @@ export default function ProductDetailPage() {
                       prose-headings:text-gray-900 dark:prose-headings:text-white prose-a:text-purple-600 dark:prose-a:text-purple-400 hover:prose-a:text-purple-500 dark:hover:prose-a:text-purple-300
                       prose-img:rounded-xl prose-img:border prose-img:border-black/5 dark:prose-img:border-white/10
                       prose-strong:text-purple-700 dark:prose-strong:text-purple-100"
-                                        dangerouslySetInnerHTML={{ __html: product.detailedDescription }}
+                                        dangerouslySetInnerHTML={{
+                                            __html: (() => {
+                                                // ✅ SECURITY FIX: Sanitize HTML để chống XSS
+                                                try {
+                                                    const DOMPurify = require('isomorphic-dompurify');
+                                                    return DOMPurify.sanitize(product.detailedDescription, {
+                                                        ALLOWED_TAGS: ['h1','h2','h3','h4','h5','h6','p','br','strong','em','b','i','u','a','ul','ol','li','img','blockquote','pre','code','table','thead','tbody','tr','th','td','hr','span','div','figure','figcaption'],
+                                                        ALLOWED_ATTR: ['href','src','alt','title','class','target','rel','width','height'],
+                                                        ALLOW_DATA_ATTR: false,
+                                                    });
+                                                } catch {
+                                                    // Fallback: strip all HTML tags
+                                                    return product.detailedDescription.replace(/<[^>]*>/g, '');
+                                                }
+                                            })()
+                                        }}
                                     />
                                 ) : (
                                     <p className="text-gray-600 dark:text-gray-300 leading-relaxed text-lg bg-black/5 dark:bg-white/5 p-6 rounded-2xl border border-black/10 dark:border-white/10">
@@ -300,7 +315,7 @@ export default function ProductDetailPage() {
                                         <div className="pt-6 border-t border-black/10 dark:border-white/10 text-center">
                                             <p className="text-xs text-gray-500 flex items-center justify-center gap-1.5">
                                                 <Clock className="w-3.5 h-3.5" />
-                                                Cập nhật: {new Date(product.createdAt || product.created_at).toLocaleDateString("vi-VN")}
+                                                Cập nhật: {new Date(product.updatedAt || product.updated_at || product.createdAt || product.created_at).toLocaleDateString("vi-VN")}
                                             </p>
                                         </div>
                                     )}

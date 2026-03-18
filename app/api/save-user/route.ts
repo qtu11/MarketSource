@@ -17,7 +17,6 @@ export async function POST(request: NextRequest) {
       email,
       name,
       username,
-      password,
       avatarUrl,
       provider,
       ipAddress: providedIp,
@@ -30,22 +29,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ✅ FIX SECURITY: Mọi request update profile phải đi kèm verify token
+    const { getServerSession } = await import('next-auth');
+    const { authOptions } = await import('@/lib/next-auth');
+    const session = await getServerSession(authOptions);
+
+    if (!session || !session.user || session.user.email !== email) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized profile update request' },
+        { status: 401 }
+      );
+    }
+
     // Lấy IP từ request nếu không có trong body
     const ipAddress = providedIp || getClientIP(request);
 
-    // ✅ FIX: Hash password nếu có
-    let passwordHash: string | undefined = undefined;
-    if (password) {
-      const bcrypt = await import('bcryptjs');
-      passwordHash = await bcrypt.hash(password, 10);
-    }
-
-    // Tạo hoặc cập nhật user
+    // Tạo hoặc cập nhật user (Không bao giờ cho phép update password qua route này)
     const result = await createOrUpdateUser({
       email,
       name: name || username,
       username,
-      passwordHash,
+      passwordHash: undefined,
       avatarUrl,
       ipAddress,
       role: 'user', // Default role, có thể thay đổi sau

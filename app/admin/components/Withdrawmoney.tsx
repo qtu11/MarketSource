@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,13 +21,20 @@ export function Withdrawmoney({
   rejectWithdrawal,
   loadData
 }: WithdrawmoneyProps) {
+  const [showRejected, setShowRejected] = useState(false)
+
+  const filteredWithdrawals = pendingWithdrawals.filter(w => {
+    if (showRejected) return true
+    return w.status !== "rejected"
+  })
+
   return (
     <div className="space-y-6">
       <Card className="shadow-md neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              Yêu cầu rút tiền ({pendingWithdrawals.filter(w => w.status !== "rejected").length})
+              Yêu cầu rút tiền ({filteredWithdrawals.length})
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
                 <span className="text-xs text-muted-foreground">Real-time</span>
@@ -40,13 +48,20 @@ export function Withdrawmoney({
             >
               Làm mới
             </Button>
+            <Button
+              size="sm"
+              variant={showRejected ? "default" : "outline"}
+              onClick={() => setShowRejected(!showRejected)}
+              className="text-xs h-7"
+            >
+              {showRejected ? 'Ẩn đã từ chối' : 'Hiện đã từ chối'}
+            </Button>
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {pendingWithdrawals
-              .filter(w => w.status !== "rejected")
-              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+            {filteredWithdrawals
+              .sort((a, b) => new Date(b.created_at || b.timestamp || 0).getTime() - new Date(a.created_at || a.timestamp || 0).getTime())
               .map((withdrawal) => (
                 <div key={withdrawal.id} className="p-4 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between space-y-4 lg:space-y-0">
@@ -121,7 +136,7 @@ export function Withdrawmoney({
                           -{withdrawal.amount.toLocaleString('vi-VN')}đ
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          Nhận: {(withdrawal.amount || withdrawal.totalDeduct || withdrawal.amount).toLocaleString('vi-VN')}đ
+                          Nhận thực tế: {(withdrawal.receiveAmount || Math.round(withdrawal.amount * 0.95)).toLocaleString('vi-VN')}đ (phí 5%)
                         </p>
                         <Badge className={
                           withdrawal.status === "pending" ? "bg-yellow-500 text-white shadow-md" :

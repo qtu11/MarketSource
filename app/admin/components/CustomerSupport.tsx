@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { MessageSquare, Send, User, Search, ShieldCheck, Bot, Circle, ArrowLeft, RefreshCw } from 'lucide-react'
+import { Textarea } from "@/components/ui/textarea"
 
 interface CustomerSupportProps {
   users: any[]
@@ -310,17 +311,18 @@ export function CustomerSupport({ users, adminUser }: CustomerSupportProps) {
             {/* Input Area */}
             <div className="p-3 border-t border-slate-700/50 bg-slate-900/80">
               <div className="flex gap-2">
-                <Input
+                <Textarea
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Nhập tin nhắn..."
+                  rows={1}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault()
                       sendMessage()
                     }
                   }}
-                  className="flex-1 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 h-10 rounded-xl text-sm"
+                  className="flex-1 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 min-h-10 max-h-32 rounded-xl text-sm resize-none"
                 />
                 <Button
                   onClick={sendMessage}

@@ -94,7 +94,7 @@ export const updateProductSchema = z.object({
 export const purchaseSchema = z.object({
   userId: z.union([z.string(), z.number()]),
   productId: z.union([z.string(), z.number()]),
-  amount: z.number().min(0, 'Số tiền không hợp lệ'),
+  amount: z.number().positive('Số tiền phải lớn hơn 0'),
 })
 
 // Update schemas

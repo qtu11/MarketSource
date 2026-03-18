@@ -386,10 +386,29 @@ class UserManager {
       if (!result.firestoreSaved || !result.apiSaved) {
         logger.warn("UserManager.updateBalance sync incomplete", { uid, result })
       }
+
+      // ✅ BUG #7 FIX: Đồng bộ balance lên PostgreSQL qua API
+      // (persistRemotely chỉ sync lên Firestore + /api/save-user, không update balance trong DB)
+      if (isBrowser() && existing?.email) {
+        try {
+          await fetch('/api/update-balance', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              userEmail: existing.email,
+              newBalance,
+            }),
+          })
+        } catch (syncErr) {
+          logger.warn('UserManager.updateBalance: Failed to sync balance to PostgreSQL', { uid, syncErr })
+        }
+      }
     } catch (error) {
       logger.warn("UserManager.updateBalance failed", { error, uid })
     }
   }
+
 
   async saveUserData(uid: string, data: Partial<UserData>): Promise<UserSyncResult> {
     if (!uid) {

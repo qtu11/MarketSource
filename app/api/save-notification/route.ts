@@ -1,12 +1,16 @@
 export const runtime = 'nodejs'
 
 // /app/api/save-notification/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createNotification } from "@/lib/database-mysql";
 import { logger } from "@/lib/logger";
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    // ✅ BUG #6 FIX: Thêm auth check - chỉ admin hoặc server internal được tạo notification
+    const { requireAdmin } = await import('@/lib/api-auth');
+    await requireAdmin(request);
+
     const notificationData = await request.json();
     
     // ✅ FIX: Dùng database.ts thay vì mysql.ts
@@ -36,6 +40,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, id: result.id });
   } catch (error: any) {
     logger.error('Error saving notification', error, { endpoint: '/api/save-notification' });
+    if (error.message?.includes('Unauthorized')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     return NextResponse.json({ error: error.message || 'Failed to save notification' }, { status: 500 });
   }
 }
+

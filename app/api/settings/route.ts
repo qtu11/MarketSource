@@ -72,8 +72,7 @@ async function ensureSettingsTable() {
 // Lấy tất cả cài đặt
 export async function GET(request: NextRequest) {
     try {
-        // ✅ BUG #2 FIX: Yêu cầu quyền admin cho GET settings
-        await requireAdmin(request);
+        // Cho phép public access để load thông tin cho header/footer/hero
 
         const rateLimitResponse = await checkRateLimitAndRespond(request, 100, 60, 'get-settings')
         if (rateLimitResponse) return rateLimitResponse

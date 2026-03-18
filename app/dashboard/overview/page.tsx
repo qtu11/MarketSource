@@ -124,16 +124,12 @@ export default function DashboardPage() {
   const submitProfile = useCallback(
     async (payload: Record<string, any>) => {
       if (!currentUser?.email) return null
-      const response = await fetch("/api/profile", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: currentUser.email,
-          ...payload,
-        }),
+      const { apiPut } = await import('@/lib/api-client')
+      const data = await apiPut("/api/profile", {
+        email: currentUser.email,
+        ...payload,
       })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || "Không thể cập nhật hồ sơ")
       }
       return data.profile

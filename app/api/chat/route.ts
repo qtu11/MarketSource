@@ -41,15 +41,8 @@ async function verifyAuthUser(request: NextRequest): Promise<{ email: string; ui
       } catch { /* JWT verify failed, try other methods */ }
     }
 
-    // Cách 2: Email từ query param hoặc header (cho client-side auth)
-    const authEmail = request.headers.get('x-user-email');
-    if (authEmail) {
-      // Verify email exists in database
-      const userId = await getUserIdByEmail(authEmail);
-      if (userId) {
-        return { email: authEmail, uid: String(userId) };
-      }
-    }
+    // ✅ SECURITY FIX: Cách 2 (x-user-email header) ĐÃ BỊ XÓA — Có thể bị mạo danh
+    // Chỉ tin cậy JWT cookie, NextAuth session, hoặc Firebase token
 
     // Cách 3: Firebase token (backward compatible)
     try {

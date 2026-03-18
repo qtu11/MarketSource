@@ -202,7 +202,7 @@ export function Overview({ stats, users, purchases, notifications }: OverviewPro
             <div className="space-y-4 max-h-96 overflow-y-auto">
               {notifications
                 .filter(n => n.type.includes("deposit_") || n.type.includes("withdrawal_"))
-                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                .sort((a, b) => new Date(b.created_at || b.timestamp || 0).getTime() - new Date(a.created_at || a.timestamp || 0).getTime())
                 .slice(0, 10)
                 .map((notification) => (
                 <div key={notification.id} className="flex items-start space-x-4 p-3 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
@@ -214,14 +214,14 @@ export function Overview({ stats, users, purchases, notifications }: OverviewPro
                       <Badge className={`text-xs ${notification.type.includes("deposit_") ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
                         {notification.type.includes("deposit_") ? 'Nạp tiền' : 'Rút tiền'}
                       </Badge>
-                      {!notification.read && (
+                      {!notification.is_read && (
                         <Badge className="bg-blue-500 text-white text-xs">Mới</Badge>
                       )}
                     </div>
                     <p className="text-sm font-medium mt-2">{notification.title}</p>
                     <p className="text-xs text-muted-foreground">{notification.message}</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      ⏰ {new Date(notification.timestamp).toLocaleString('vi-VN')}
+                      ⏰ {new Date(notification.created_at || notification.timestamp).toLocaleString('vi-VN')}
                     </p>
                   </div>
                 </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAdmin } from "@/lib/api-auth"
 import { query } from "@/lib/database-mysql"
+import { checkRateLimitAndRespond } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 
@@ -10,6 +11,12 @@ export const dynamic = 'force-dynamic'
 // GET: Get all notifications (admin only)
 export async function GET(request: NextRequest) {
   try {
+    // ✅ SECURITY FIX: Thêm rate limit
+    const rateLimitResponse = await checkRateLimitAndRespond(request, 30, 60, 'admin-notifications-get');
+    if (rateLimitResponse) {
+      return rateLimitResponse;
+    }
+
     await requireAdmin(request)
 
     const { searchParams } = new URL(request.url)
@@ -38,7 +45,7 @@ export async function GET(request: NextRequest) {
       params.push(type)
     }
 
-    if (isRead !== null) {
+    if (isRead !== null && isRead !== '') {
       sql += ` AND n.is_read = ?`
       params.push(isRead === 'true' ? 1 : 0)
     }

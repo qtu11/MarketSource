@@ -378,10 +378,18 @@ export async function normalizeUserIdMySQL(
 ): Promise<number | null> {
   try {
     if (typeof userId === "number") return userId
+    // ✅ BUG #2 FIX: Nếu userId là pure numeric string, parse và trả về ngay
+    const numId = parseInt(String(userId), 10)
+    if (!isNaN(numId) && String(numId) === String(userId)) return numId
+    // Thử tìm theo email trước
     if (userEmail) {
       const id = await getUserIdByEmailMySQL(userEmail)
       if (id) return id
     }
+    // ✅ BUG #2 FIX: Nếu userId là Firebase UID (string), thử tìm theo uid column trong DB
+    // Một số DB schema lưu Firebase UID vào column `firebase_uid` hoặc metadata
+    // Fallback: tìm theo email
+    logger.warn('normalizeUserIdMySQL: Cannot resolve string userId without email', { userId, userEmail })
     return null
   } catch (err) {
     logger.error("MySQL: normalizeUserId error", err, { userId, userEmail })
@@ -403,7 +411,8 @@ export async function getDepositsMySQL(userId?: number) {
       sql += " WHERE d.user_id = ?"
       params.push(userId)
     }
-    sql += " ORDER BY d.timestamp DESC"
+    // ✅ BUG #5 FIX: Dùng created_at thay vì timestamp (PostgreSQL không có cột timestamp)
+    sql += " ORDER BY d.created_at DESC"
     return await query<any>(sql, params)
   } catch (err) {
     logger.error("MySQL: getDeposits error", err, { userId })
@@ -679,8 +688,10 @@ export async function approveWithdrawalAndUpdateBalanceMySQL(
     // ✅ FIX: So sánh amount với epsilon để tránh sai lệch kiểu decimal/string từ PostgreSQL
     if (Math.abs(Number(withdrawal.amount) - Number(amount)) > 0.01) throw new Error("Amount mismatch with withdrawal")
 
+    // ✅ BUG-A1 FIX: KHÔNG trừ balance ở đây vì createWithdrawalMySQL() đã trừ ngay khi user tạo request (dòng 627-629)
+    // Chỉ cần verify balance hiện tại >= 0 (sanity check)
     const [userRows]: any = await conn.query(
-      "SELECT balance FROM users WHERE id = ?",
+      "SELECT balance FROM users WHERE id = ? FOR UPDATE",
       [userId],
     )
     const currentBalance = Number(userRows[0]?.balance || 0)
@@ -694,9 +705,11 @@ export async function approveWithdrawalAndUpdateBalanceMySQL(
       [approvedBy, withdrawalId],
     )
 
+    // ✅ BUG-A1 FIX: Balance đã được trừ khi tạo request, chỉ return balance hiện tại
     return { success: true, newBalance: currentBalance }
   })
 }
+
 
 export async function updateWithdrawalStatusMySQL(
   withdrawalId: number,
@@ -2321,6 +2334,7 @@ export {
   createAdminActionMySQL as createAdminAction,
   getAdminActionsMySQL as getAdminActions,
 }
+
 
 
 

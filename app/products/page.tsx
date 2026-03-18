@@ -91,6 +91,7 @@ export default function ProductsPage() {
   const [priceRange, setPriceRange] = useState("all")
   const [products, setProducts] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [displayCount, setDisplayCount] = useState(9)
 
   const [categories, setCategories] = useState(BASE_CATEGORIES)
 
@@ -391,7 +392,7 @@ export default function ProductsPage() {
           <ProductSkeletonGrid count={6} />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {sortedProducts.map((product, index) => (
+            {sortedProducts.slice(0, displayCount).map((product, index) => (
               <Card
                 key={product.id}
                 className="bg-white/60 dark:bg-black/40 backdrop-blur-xl border-white/60 dark:border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.05)] dark:shadow-2xl hover:border-purple-500/50 transition-all duration-300 group overflow-hidden augment-fade-in cursor-pointer"
@@ -526,14 +527,15 @@ export default function ProductsPage() {
         )}
 
         {/* Load More */}
-        {sortedProducts.length > 0 && (
+        {sortedProducts.length > displayCount && (
           <div className="text-center mt-12">
             <Button
               variant="outline"
               size="lg"
+              onClick={() => setDisplayCount(prev => prev + 6)}
               className="border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-700 px-8 bg-transparent"
             >
-              Xem thêm mã nguồn
+              Xem thêm mã nguồn ({sortedProducts.length - displayCount} còn lại)
             </Button>
           </div>
         )}

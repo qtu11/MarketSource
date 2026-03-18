@@ -249,6 +249,7 @@ export function User({ users, updateUserStatus, updateUserBalance }: UserProps) 
                         <div className="flex items-center space-x-2">
                           <Input
                             id={`balance-${user.uid}`}
+                            key={`balance-${user.uid}-${user.balance}`}
                             type="number"
                             defaultValue={user.balance || 0}
                             className="w-32"

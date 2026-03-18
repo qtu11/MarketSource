@@ -122,8 +122,8 @@ function createPool(): Pool | null {
 
   // Fallback: dùng các biến riêng lẻ
   // ✅ SECURITY FIX: Bắt buộc env vars, không dùng hardcoded values
-  if (!process.env.DB_PASSWORD) {
-    throw new Error('DB_PASSWORD environment variable is required. Please set it in your .env file.');
+  if (!process.env.DB_PASSWORD || !process.env.DB_HOST || !process.env.DB_USER) {
+    throw new Error('DB_PASSWORD, DB_HOST, and DB_USER environment variables are required. Please set them in your .env file.');
   }
 
   // ✅ FIX IPv4: Tự động dùng port 6543 (Session Pooler) nếu port 5432
@@ -134,9 +134,9 @@ function createPool(): Pool | null {
   }
 
   const config: any = {
-    host: process.env.DB_HOST || 'db.qrozeqsmqvkqxqenhike.supabase.co',
+    host: process.env.DB_HOST,
     database: process.env.DB_NAME || 'postgres',
-    user: process.env.DB_USER || 'qtusdev',
+    user: process.env.DB_USER,
     password: process.env.DB_PASSWORD, // Bắt buộc, không có fallback
     port: dbPort,
     ...poolConfig,
@@ -738,6 +738,8 @@ export async function normalizeUserId(
 // DEPOSIT FUNCTIONS
 // ============================================================
 
+// ✅ BUG-A6 FIX: Cache schema check result
+let depositsSchemaCache: boolean | null = null;
 export async function getDeposits(userId?: number) {
   try {
     let query = `
@@ -777,21 +779,22 @@ export async function createDeposit(depositData: {
       throw new Error('Cannot resolve user ID. User may not exist in database.');
     }
 
-    // ✅ FIX: Kiểm tra xem cột transaction_id có tồn tại không
-    // Nếu không có, chỉ insert các cột cơ bản
-    let hasTransactionId = false;
-    try {
-      const checkResult = await pool.query(`
-        SELECT column_name 
-        FROM information_schema.columns 
-        WHERE table_schema = 'public' 
-        AND table_name = 'deposits' 
-        AND column_name = 'transaction_id'
-      `);
-      hasTransactionId = checkResult.rows.length > 0;
-    } catch (checkError) {
-      // Nếu không check được, giả định không có cột này
-      hasTransactionId = false;
+  // ✅ FIX BUG-A6: Cache kết quả check schema thay vì query mỗi lần
+    let hasTransactionId = depositsSchemaCache;
+    if (hasTransactionId === null) {
+      try {
+        const checkResult = await pool.query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_schema = 'public' 
+          AND table_name = 'deposits' 
+          AND column_name = 'transaction_id'
+        `);
+        hasTransactionId = checkResult.rows.length > 0;
+        depositsSchemaCache = hasTransactionId;
+      } catch (checkError) {
+        hasTransactionId = false;
+      }
     }
 
     // Insert với hoặc không có transaction_id tùy theo schema

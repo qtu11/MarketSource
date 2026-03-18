@@ -157,11 +157,8 @@ export async function getAuthHeaders(): Promise<HeadersInit> {
           // Đảm bảo email có giá trị hợp lệ
           if (user.email && typeof user.email === 'string' && user.email.includes('@')) {
             headers['X-User-Email'] = user.email;
-            // ✅ FIX: Gửi kèm Email Auth Secret để server chấp nhận email-based auth
-            const emailAuthSecret = process.env.NEXT_PUBLIC_EMAIL_AUTH_SECRET || process.env.EMAIL_AUTH_SECRET;
-            if (emailAuthSecret) {
-              headers['X-Email-Auth-Secret'] = emailAuthSecret;
-            }
+            // ✅ SECURITY FIX: Không gửi Email Auth Secret từ client
+            // Secret chỉ được verify server-side qua NextAuth session
             if (!token) {
               logger.debug('Using email-based auth (no token)', { email: user.email });
             }

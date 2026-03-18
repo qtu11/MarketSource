@@ -49,9 +49,9 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
         }
       } catch (error) {
         logger.error('Error loading products', error);
-        // Fallback to localStorage nếu API fail
-        const loadedProducts = JSON.parse(localStorage.getItem("uploadedProducts") || "[]");
-        setProducts(loadedProducts);
+        // ✅ FIX BUG-8: Hiện error thay vì fallback localStorage (data stale)
+        alert('Không thể tải danh sách sản phẩm. Vui lòng làm mới trang.');
+        setProducts([]);
       } finally {
         setIsLoading(false);
       }
