@@ -225,23 +225,29 @@ export default function ProductDetailPage() {
                       prose-strong:text-purple-700 dark:prose-strong:text-purple-100"
                                         dangerouslySetInnerHTML={{
                                             __html: (() => {
-                                                // ✅ SECURITY FIX: Sanitize HTML để chống XSS
+                                                const raw = product.detailedDescription;
+                                                // ✅ FIX: Nếu là plain text (không có HTML tags) → convert \n thành <br>
+                                                const isPlainText = !/<[a-z][\s\S]*>/i.test(raw);
+                                                const withLineBreaks = isPlainText
+                                                    ? raw.replace(/\n/g, '<br />')
+                                                    : raw;
+                                                // ✅ SECURITY: Sanitize HTML
                                                 try {
                                                     const DOMPurify = require('isomorphic-dompurify');
-                                                    return DOMPurify.sanitize(product.detailedDescription, {
+                                                    return DOMPurify.sanitize(withLineBreaks, {
                                                         ALLOWED_TAGS: ['h1','h2','h3','h4','h5','h6','p','br','strong','em','b','i','u','a','ul','ol','li','img','blockquote','pre','code','table','thead','tbody','tr','th','td','hr','span','div','figure','figcaption'],
                                                         ALLOWED_ATTR: ['href','src','alt','title','class','target','rel','width','height'],
                                                         ALLOW_DATA_ATTR: false,
                                                     });
                                                 } catch {
-                                                    // Fallback: strip all HTML tags
-                                                    return product.detailedDescription.replace(/<[^>]*>/g, '');
+                                                    return withLineBreaks.replace(/<script[\s\S]*?<\/script>/gi, '');
                                                 }
                                             })()
                                         }}
                                     />
                                 ) : (
-                                    <p className="text-gray-600 dark:text-gray-300 leading-relaxed text-lg bg-black/5 dark:bg-white/5 p-6 rounded-2xl border border-black/10 dark:border-white/10">
+                                    // ✅ FIX: whitespace-pre-wrap để giữ nguyên xuống dòng
+                                    <p className="text-gray-600 dark:text-gray-300 leading-relaxed text-lg bg-black/5 dark:bg-white/5 p-6 rounded-2xl border border-black/10 dark:border-white/10 whitespace-pre-wrap">
                                         {product.description || "Chưa có mô tả chi tiết cho sản phẩm này."}
                                     </p>
                                 )}

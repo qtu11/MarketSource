@@ -18,9 +18,17 @@ export function mapBackendToFrontend(backendProduct: any): any {
     // Map image fields
     image: backendProduct.image_url || backendProduct.image || '/placeholder.svg',
     imageUrl: backendProduct.image_url,
-    imageUrls: Array.isArray(backendProduct.image_urls)
-      ? backendProduct.image_urls
-      : (typeof backendProduct.image_urls === 'string' ? JSON.parse(backendProduct.image_urls || '[]') : []),
+    imageUrls: (() => {
+      const raw = backendProduct.image_urls;
+      if (Array.isArray(raw)) return raw.filter(Boolean);
+      if (typeof raw === 'string' && raw.trim()) {
+        // Thử parse JSON trước
+        try { return JSON.parse(raw).filter(Boolean); } catch {}
+        // Fallback: CSV (url1, url2, url3)
+        return raw.split(',').map((s: string) => s.trim()).filter(Boolean);
+      }
+      return [];
+    })(),
     // Map download fields
     downloadLink: backendProduct.download_url || backendProduct.downloadUrl,
     downloadUrl: backendProduct.download_url,
