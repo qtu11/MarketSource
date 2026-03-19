@@ -29,12 +29,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ✅ FIX SECURITY: Mọi request update profile phải đi kèm verify token
-    const { getServerSession } = await import('next-auth');
-    const { authOptions } = await import('@/lib/next-auth');
-    const session = await getServerSession(authOptions);
+    // ✅ FIX SECURITY: Mọi request update profile phải đi kèm verify token (Hoặc NextAuth hoặc Custom JWT)
+    let authenticatedEmail = null;
 
-    if (!session || !session.user || session.user.email !== email) {
+    // 1. Thử check NextAuth session
+    try {
+      const { getServerSession } = await import('next-auth');
+      const { authOptions } = await import('@/lib/next-auth');
+      const session = await getServerSession(authOptions);
+      if (session?.user?.email) {
+        authenticatedEmail = session.user.email;
+      }
+    } catch { /* Ignore */ }
+
+    // 2. Nếu NextAuth không có, thử check JWT Cookie (auth-token) từ luồng login thủ công
+    if (!authenticatedEmail) {
+      try {
+        const { cookies } = await import('next/headers');
+        const cookieStore = await cookies();
+        const tokenCookie = cookieStore.get('auth-token');
+        if (tokenCookie) {
+          const jwt = await import('@/lib/jwt');
+          const payload = await (jwt as any).verifyToken?.(tokenCookie.value);
+          if (payload?.email) {
+            authenticatedEmail = payload.email;
+          }
+        }
+      } catch { /* Ignore */ }
+    }
+
+    if (!authenticatedEmail || authenticatedEmail !== email) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized profile update request' },
         { status: 401 }
