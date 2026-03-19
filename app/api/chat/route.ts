@@ -5,16 +5,18 @@ import { logger } from '@/lib/logger';
 import { z } from 'zod';
 import { Product } from '@/types/product';
 import { cookies } from 'next/headers';
+import DOMPurify from 'isomorphic-dompurify';
 
 export const runtime = 'nodejs'
 
-// ✅ FIX: Sanitize message để tránh XSS
+// ✅ FIX: Sanitize message để tránh XSS triệt để bằng HTML Entities
 function sanitizeMessage(message: string): string {
-  // Basic sanitization - remove HTML tags và script tags
-  return message
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<[^>]+>/g, '')
-    .trim();
+  if (!message) return '';
+  // ✅ BUG #18 FIX: Use DOMPurify for robust XSS protection
+  return DOMPurify.sanitize(message.trim(), {
+    ALLOWED_TAGS: [], // No HTML allowed in chat
+    ALLOWED_ATTR: []
+  });
 }
 
 const messageSchema = z.object({

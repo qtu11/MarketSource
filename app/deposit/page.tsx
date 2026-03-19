@@ -233,18 +233,20 @@ export default function DepositPage() {
       const userData = await userManager.getUser()
       if (userData) {
         const mappedUser: User = {
-          id: userData.uid || (userData as { id?: string | number }).id || userData.email || '',
+          ...userData,
+          id: Number((userData as any).id || 0),
+          uid: userData.uid || '',
           email: userData.email || '',
-          name: userData.name || (userData as { displayName?: string }).displayName || null,
-          displayName: (userData as { displayName?: string }).displayName || null,
-          balance: typeof userData.balance === 'string' ? parseFloat(userData.balance) : (userData.balance || 0),
-          role: (userData as { role?: string }).role as 'user' | 'admin' | 'superadmin' | undefined,
-          status: (userData as { status?: string }).status as 'active' | 'banned' | 'pending' | undefined,
-          provider: (userData as { provider?: string }).provider,
-          lastActivity: (userData as { lastActivity?: string | Date }).lastActivity,
-          loginCount: (userData as { loginCount?: number }).loginCount,
-          uid: userData.uid
-        }
+          name: userData.name || (userData as any).displayName || null,
+          username: (userData as any).username || (userData as any).displayName || null,
+          role: (userData as any).role || 'user',
+          status: (userData as any).status || 'active',
+          balance: Number(userData.balance || 0),
+          loginCount: Number((userData as any).loginCount || 0),
+          created_at: (userData as any).created_at || new Date().toISOString(),
+          updated_at: (userData as any).updated_at || new Date().toISOString(),
+        } as User
+
         setUser(mappedUser)
         loadUserDeposits(userData.email || '')
       } else {
@@ -258,18 +260,19 @@ export default function DepositPage() {
       const updatedUser = await userManager.getUser()
       if (updatedUser) {
         const mappedUser: User = {
-          id: updatedUser.uid || (updatedUser as { id?: string | number }).id || updatedUser.email || '',
+          ...updatedUser,
+          id: Number((updatedUser as any).id || 0),
+          uid: updatedUser.uid || '',
           email: updatedUser.email || '',
-          name: updatedUser.name || (updatedUser as { displayName?: string }).displayName || null,
-          displayName: (updatedUser as { displayName?: string }).displayName || null,
-          balance: typeof updatedUser.balance === 'string' ? parseFloat(updatedUser.balance) : (updatedUser.balance || 0),
-          role: (updatedUser as { role?: string }).role as 'user' | 'admin' | 'superadmin' | undefined,
-          status: (updatedUser as { status?: string }).status as 'active' | 'banned' | 'pending' | undefined,
-          provider: (updatedUser as { provider?: string }).provider,
-          lastActivity: (updatedUser as { lastActivity?: string | Date }).lastActivity,
-          loginCount: (updatedUser as { loginCount?: number }).loginCount,
-          uid: updatedUser.uid
-        }
+          name: updatedUser.name || (updatedUser as any).displayName || null,
+          username: (updatedUser as any).username || (updatedUser as any).displayName || null,
+          role: (updatedUser as any).role || 'user',
+          status: (updatedUser as any).status || 'active',
+          balance: Number(updatedUser.balance || 0),
+          loginCount: Number((updatedUser as any).loginCount || 0),
+          created_at: (updatedUser as any).created_at || new Date().toISOString(),
+          updated_at: (updatedUser as any).updated_at || new Date().toISOString(),
+        } as User
         setUser(mappedUser)
         loadUserDeposits(updatedUser.email || '')
       }

@@ -3,34 +3,30 @@
  */
 
 export interface Product {
-  id: number | string
+  id: number
   title: string
-  description?: string | null
-  price: number | string
+  description: string | null
+  detailedDescription?: string | null
+  price: number
   originalPrice?: number | null
-  original_price?: number | null
-  category?: string | null
+  category: string | null
   demoUrl?: string | null
-  demoLink?: string | null
-  demo_url?: string | null
   downloadUrl?: string | null
-  download_url?: string | null
-  fileUrl?: string | null
-  imageUrl?: string | null
-  image?: string | null
-  image_url?: string | null
-  tags?: string[] | null
-  isActive?: boolean
-  featured?: boolean
-  created_at?: string | Date
-  updated_at?: string | Date
-  seller_id?: number | string | null
+  imageUrl: string | null
+  imageUrls: string[] | null
+  tags: string[] | null
+  isActive: boolean
+  isFeatured: boolean
+  featured?: boolean // Legacy field
+  created_at: string | Date
+  updated_at: string | Date
+  seller_id?: number | null
   stock?: number
-  download_count?: number
-  downloads?: number
-  average_rating?: number
-  rating?: number
-  total_ratings?: number
+  downloadCount: number
+  downloads?: number // Legacy field
+  averageRating: number
+  rating?: number // Legacy field
+  totalRatings: number
 }
 
 export interface ProductReview {

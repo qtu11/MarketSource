@@ -10,7 +10,7 @@ import { ShoppingCart, Plus, Minus, Trash2, CreditCard, ArrowLeft, Wallet, Star,
 import { FloatingHeader } from "@/components/floating-header"
 import { Footer } from "@/components/footer"
 import { Logo } from "@/components/logo"
-import { getDeviceInfo } from "@/lib/auth"
+import { getDeviceInfo, getIPAddress } from "@/lib/auth"
 import { getLocalStorage, setLocalStorage, removeLocalStorage } from "@/lib/localStorage-utils"
 import { logger } from "@/lib/logger-client"
 import Link from "next/link"
@@ -90,10 +90,17 @@ export default function CartPage() {
   }
 
   const getTotalPrice = () => {
-    return cartItems.reduce((total, item) => total + (item.price * (item.quantity || 1)), 0)
+    return cartItems
+      .filter((item: any) => item.quantity === undefined || Number(item.quantity) > 0)
+      .reduce((total, item) => {
+        const priceNum = typeof item.price === 'number' ? item.price : Number(item.price) || 0;
+        const qtyNum = item.quantity !== undefined ? Number(item.quantity) : 1;
+        return total + (priceNum * Math.max(0, qtyNum));
+      }, 0)
   }
 
   const handleCheckout = async () => {
+    if (isLoading) return // ✅ BUG #30 FIX: Chặn double click khi đang xử lý
     if (!currentUser) {
       alert("Vui lòng đăng nhập để thanh toán!")
       router.push("/auth/login")
@@ -107,6 +114,11 @@ export default function CartPage() {
 
     const totalPrice = getTotalPrice()
 
+    if (isNaN(totalPrice) || totalPrice < 0 || !isFinite(totalPrice)) {
+      alert("Dữ liệu giỏ hàng không hợp lệ!")
+      return
+    }
+
     if (currentUser.balance < totalPrice) {
       alert(`Số dư không đủ! Bạn cần ${(totalPrice - currentUser.balance).toLocaleString('vi-VN')}đ nữa.`)
       router.push("/deposit")
@@ -117,42 +129,55 @@ export default function CartPage() {
 
     try {
       const deviceInfo = getDeviceInfo()
-      const ipAddress = "Unknown"
+      const ipAddress = await getIPAddress()
+      
+      // ✅ BUG #26 FIX: Sử dụng Bulk Purchase API thay vì vòng lặp N+1
+      const token = getLocalStorage<string | null>('firebaseToken', null) || getLocalStorage<string | null>('authToken', null);
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
 
-      const purchaseResults = [];
-      try {
-        for (const item of cartItems) {
-          const headers: HeadersInit = { 'Content-Type': 'application/json' };
-          const token = getLocalStorage<string | null>('firebaseToken', null) || getLocalStorage<string | null>('authToken', null);
-          if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-          }
+      const response = await fetch('/api/purchases/bulk', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          userId: currentUser.uid || currentUser.id,
+          items: cartItems.map(item => ({
+            id: item.id,
+            quantity: item.quantity !== undefined ? Number(item.quantity) : 1,
+            price: typeof item.price === 'number' ? item.price : Number(item.price) || 0
+          }))
+        })
+      });
 
-          const response = await fetch('/api/purchases', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              userId: currentUser.uid || currentUser.id,
-              productId: item.id,
-              amount: item.price * (item.quantity || 1),
-              userEmail: currentUser.email
-            })
-          });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Lỗi hệ thống' }));
+        throw new Error(errorData.error || `Checkout failed: ${response.status}`);
+      }
 
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-            throw new Error(errorData.error || `Purchase failed: ${response.status}`);
-          }
+      const bulkResult = await response.json();
+      if (!bulkResult.success) {
+        throw new Error(bulkResult.error || 'Thanh toán thất bại');
+      }
 
-          const result = await response.json();
-          if (!result.success) {
-            throw new Error(result.error || 'Purchase failed');
-          }
-          purchaseResults.push(result);
-        }
-      } catch (purchaseError: any) {
-        logger.error('Failed to create purchase records in database', purchaseError);
-        alert(purchaseError.message || 'Không thể tạo đơn hàng. Vui lòng thử lại!');
+      // Xử lý kết quả
+      const itemsPurchased = bulkResult.results || [];
+      const successfulItems = itemsPurchased.filter((r: any) => r.success).map((r: any) => r.id);
+      
+      // Xoá các sản phẩm thành công khỏi giỏ hàng
+      const remainingCart = cartItems.filter(item => !successfulItems.includes(item.id));
+      setCartItems(remainingCart);
+      
+      if (remainingCart.length === 0) {
+        removeLocalStorage('cartItems');
+      } else {
+        setLocalStorage('cartItems', remainingCart);
+      }
+      window.dispatchEvent(new Event('cartUpdated'));
+
+      if (successfulItems.length < cartItems.length) {
+        alert('Một số sản phẩm thanh toán bị lỗi. Giỏ hàng đã được cập nhật!');
         setIsLoading(false);
         return;
       }
@@ -161,10 +186,11 @@ export default function CartPage() {
       const updatedUserData = await userManager.getUser();
       const updatedUser = {
         ...currentUser,
-        balance: updatedUserData?.balance || currentUser.balance - totalPrice,
-        totalSpent: (currentUser.totalSpent || 0) + totalPrice
+        ...(updatedUserData || {}), // ✅ Ensure we get all DB fields
+        balance: updatedUserData?.balance !== undefined ? updatedUserData.balance : currentUser.balance - totalPrice,
+        totalSpent: updatedUserData?.totalSpent !== undefined ? updatedUserData.totalSpent : ((currentUser.totalSpent || 0) + totalPrice)
       }
-
+      setLocalStorage("currentUser", updatedUser)
       const registeredUsers = getLocalStorage<any[]>("registeredUsers", [])
       const updatedUsers = registeredUsers.map((u: any) =>
         (u.id === currentUser.id || u.uid === currentUser.uid || u.email === currentUser.email) ? updatedUser : u
@@ -209,7 +235,11 @@ export default function CartPage() {
       window.dispatchEvent(new Event('cartUpdated'))
       window.dispatchEvent(new Event('userUpdated'))
 
-      alert(`Thanh toán thành công! Bạn đã mua ${cartItems.length} sản phẩm với tổng tiền ${totalPrice.toLocaleString('vi-VN')}đ`)
+      const totalPaid = cartItems
+        .filter(item => successfulItems.includes(item.id))
+        .reduce((sum, item) => sum + ((typeof item.price === 'number' ? item.price : Number(item.price) || 0) * (item.quantity !== undefined ? Number(item.quantity) : 1)), 0);
+
+      alert(`Thanh toán thành công! Bạn đã mua ${successfulItems.length} sản phẩm với tổng tiền ${totalPaid.toLocaleString('vi-VN')}đ`);
       router.push("/dashboard")
 
     } catch (error) {
@@ -367,22 +397,22 @@ export default function CartPage() {
                       {/* Price & Actions */}
                       <div className="flex flex-col items-end gap-3 flex-shrink-0">
                         <p className="text-xl font-bold text-gray-900 dark:text-white whitespace-nowrap">
-                          {(item.price * (item.quantity || 1)).toLocaleString('vi-VN')}
+                          {((typeof item.price === 'number' ? item.price : Number(item.price) || 0) * (item.quantity !== undefined ? Number(item.quantity) : 1)).toLocaleString('vi-VN')}
                           <span className="text-sm font-medium text-gray-500 dark:text-gray-400 ml-0.5">đ</span>
                         </p>
                         <div className="flex items-center gap-2">
                           <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden">
                             <button
-                              onClick={() => updateQuantity(item.id, (item.quantity || 1) - 1)}
+                              onClick={() => updateQuantity(item.id, (item.quantity !== undefined ? Number(item.quantity) : 1) - 1)}
                               className="px-3 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-600 dark:text-gray-300"
                             >
                               <Minus className="w-3.5 h-3.5" />
                             </button>
                             <span className="w-8 text-center font-medium text-sm text-gray-900 dark:text-white">
-                              {item.quantity || 1}
+                              {item.quantity !== undefined ? Number(item.quantity) : 1}
                             </span>
                             <button
-                              onClick={() => updateQuantity(item.id, (item.quantity || 1) + 1)}
+                              onClick={() => updateQuantity(item.id, (item.quantity !== undefined ? Number(item.quantity) : 1) + 1)}
                               className="px-3 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-600 dark:text-gray-300"
                             >
                               <Plus className="w-3.5 h-3.5" />
@@ -395,9 +425,9 @@ export default function CartPage() {
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
-                        {(item.quantity || 1) > 1 && (
+                        {(item.quantity !== undefined ? Number(item.quantity) : 1) > 1 && (
                           <p className="text-xs text-gray-400">
-                            {item.price.toLocaleString('vi-VN')}đ × {item.quantity}
+                            {(typeof item.price === 'number' ? item.price : Number(item.price) || 0).toLocaleString('vi-VN')}đ × {item.quantity !== undefined ? Number(item.quantity) : 1}
                           </p>
                         )}
                       </div>

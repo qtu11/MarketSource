@@ -48,7 +48,19 @@ export function setLocalStorage<T>(key: string, value: T): boolean {
     // Nếu quota exceeded, try to clear old data
     if (error instanceof Error && error.name === 'QuotaExceededError') {
       logger.error('localStorage quota exceeded', error, { key });
-      // TODO: Implement cleanup strategy
+      
+      // ✅ BUG #35 FIX: Cleanup strategy
+      // List các key không thiết yếu hoặc đã có trong DB
+      const lowPriorityKeys = ['adminNotifications', 'uploadedProducts', 'temp_purchases', 'debug_logs'];
+      lowPriorityKeys.forEach(k => localStorage.removeItem(k));
+      
+      // Thử lại 1 lần cuối sau khi dọn dẹp
+      try {
+        localStorage.setItem(key, JSON.stringify(value));
+        return true;
+      } catch (retryError) {
+        logger.error('localStorage write failed even after cleanup', retryError);
+      }
     }
     
     return false;

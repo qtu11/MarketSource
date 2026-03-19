@@ -22,15 +22,14 @@ const ServiceWorkerRegister = dynamic(
 )
 
 // Lazy load ErrorBoundary để tránh xung đột với @react-three/fiber trong quá trình module evaluation
-const ErrorBoundary = dynamic(
-  () => import("@/components/ErrorBoundary").then(mod => ({ default: mod.ErrorBoundary })),
-  {
-    ssr: false,
-    loading: () => null,
-  },
-)
+import { ErrorBoundary } from "@/components/ErrorBoundary"
+import { runStorageMigration } from "@/lib/storage-migration"
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
+  React.useEffect(() => {
+    runStorageMigration()
+  }, [])
+
   return (
     <Providers>
       <Suspense fallback={<div className="min-h-screen bg-background" />}>

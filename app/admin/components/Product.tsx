@@ -24,10 +24,11 @@ import {
 } from "@/components/ui/dialog"
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client"
 import { mapBackendToFrontend, mapFrontendToBackend, mapBackendProductsToFrontend } from "@/lib/product-mapper"
+import { Product as ProductType } from "@/types/product"
 
 interface ProductProps {
-  products: any[]
-  setProducts: (products: any[]) => void
+  products: ProductType[]
+  setProducts: (products: ProductType[]) => void
   adminUser: any
 }
 
@@ -120,10 +121,19 @@ function ImagePreview({ src, alt, size = 'md' }: { src: string; alt: string; siz
 }
 
 const EMPTY_PRODUCT = {
-  title: "", description: "", price: "", category: "",
-  image: "", downloadLink: "", demoLink: "", tags: "",
-  detailedDescription: "", imageUrls: "", isFeatured: false,
-  rating: "", downloadCount: ""
+  title: "", 
+  description: "", 
+  price: "", 
+  category: "",
+  imageUrl: "", 
+  downloadUrl: "", 
+  demoUrl: "", 
+  tags: "",
+  detailedDescription: "", 
+  imageUrls: "", 
+  isFeatured: false,
+  averageRating: "", 
+  downloadCount: ""
 }
 
 export default function Product({ products, setProducts, adminUser }: ProductProps) {
@@ -134,7 +144,7 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list')
   const [activeTab, setActiveTab] = useState<'add' | 'edit'>('add')
   const [previewMode, setPreviewMode] = useState(false)
-  const [expandedProduct, setExpandedProduct] = useState<string | null>(null)
+  const [expandedProduct, setExpandedProduct] = useState<number | null>(null)
   const newDescRef = useRef<HTMLTextAreaElement>(null)
   const editDescRef = useRef<HTMLTextAreaElement>(null)
 
@@ -163,6 +173,17 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
     return raw.split(',').map(s => s.trim()).filter(Boolean)
   }
 
+  // ✅ BUG #29 FIX: Validate URL to prevent XSS (javascript: links)
+  const isValidUrl = (url: string): boolean => {
+    if (!url) return true;
+    try {
+      const u = new URL(url);
+      return ['http:', 'https:'].includes(u.protocol);
+    } catch {
+      return false;
+    }
+  };
+
   // ✅ FIX: Build productData đúng format trước khi gửi API
   const buildProductData = (form: any) => mapFrontendToBackend({
     ...form,
@@ -170,19 +191,30 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
     tags: typeof form.tags === 'string'
       ? form.tags.split(',').map((t: string) => t.trim()).filter(Boolean)
       : (Array.isArray(form.tags) ? form.tags : []),
-    // ✅ KEY FIX: image field → imageUrl cho backend
-    imageUrl: form.image || form.imageUrl || null,
-    // ✅ KEY FIX: CSV string → array trước khi gửi
+    imageUrl: form.imageUrl || null,
     imageUrls: parseImageUrls(form.imageUrls),
-    downloadUrl: form.downloadLink || form.downloadUrl || null,
-    demoUrl: form.demoLink || form.demoUrl || null,
+    downloadUrl: form.downloadUrl || null,
+    demoUrl: form.demoUrl || null,
   })
 
   // ✅ Thêm sản phẩm mới
   const addProduct = useCallback(async () => {
+    if (isLoading) return; // ✅ BUG #30 FIX: Chặn double click
+
     if (!newProduct.title || !newProduct.price) {
       alert("Vui lòng nhập tên sản phẩm và giá!")
       return
+    }
+
+    // ✅ BUG #29: Validate URLs
+    if (newProduct.imageUrl && !isValidUrl(newProduct.imageUrl)) {
+      alert("URL ảnh chính không hợp lệ!"); return;
+    }
+    if (newProduct.downloadUrl && !isValidUrl(newProduct.downloadUrl)) {
+      alert("URL tải xuống không hợp lệ!"); return;
+    }
+    if (newProduct.demoUrl && !isValidUrl(newProduct.demoUrl)) {
+      alert("URL demo không hợp lệ!"); return;
     }
     setIsLoading(true)
     try {
@@ -206,7 +238,19 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
 
   // ✅ Sửa sản phẩm
   const saveEdit = useCallback(async () => {
+    if (isLoading) return; // ✅ BUG #30 FIX: Chặn double click
     if (!editingProduct) return
+
+    // ✅ BUG #29: Validate URLs
+    if (editingProduct.image && !isValidUrl(editingProduct.image)) {
+      alert("URL ảnh không hợp lệ!"); return;
+    }
+    if (editingProduct.downloadLink && !isValidUrl(editingProduct.downloadLink)) {
+      alert("URL tải xuống không hợp lệ!"); return;
+    }
+    if (editingProduct.demoLink && !isValidUrl(editingProduct.demoLink)) {
+      alert("URL demo không hợp lệ!"); return;
+    }
     setIsLoading(true)
     try {
       const productId = typeof editingProduct.id === 'string' ? parseInt(editingProduct.id) : editingProduct.id
@@ -274,16 +318,16 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
   }, [products, setProducts])
 
   // Start editing
-  const startEdit = (product: any) => {
+  const startEdit = (product: ProductType) => {
     setEditingProduct({
       ...product,
-      image: product.image || product.imageUrl || '',
-      imageUrls: Array.isArray(product.imageUrls) ? product.imageUrls.join(', ') : product.imageUrls || '',
-      tags: Array.isArray(product.tags) ? product.tags.join(', ') : product.tags || '',
-      downloadLink: product.downloadLink || product.downloadUrl || '',
-      demoLink: product.demoLink || product.demoUrl || '',
-      rating: product.rating || product.averageRating || '',
-      downloadCount: product.downloadCount || product.downloads || '',
+      imageUrl: product.imageUrl || '',
+      imageUrls: Array.isArray(product.imageUrls) ? product.imageUrls.join(', ') : '',
+      tags: Array.isArray(product.tags) ? product.tags.join(', ') : '',
+      downloadUrl: product.downloadUrl || '',
+      demoUrl: product.demoUrl || '',
+      averageRating: product.averageRating || '',
+      downloadCount: product.downloadCount || '',
     })
     setActiveTab('edit')
   }
@@ -376,14 +420,14 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
       <div>
         <Label className="text-xs text-gray-400 mb-1 block">🖼️ Link ảnh chính (URL)</Label>
         <Input
-          value={form.image || ''} placeholder="https://files.catbox.moe/abc.png"
-          onChange={e => setForm({ ...form, image: e.target.value })}
+          value={form.imageUrl || ''} placeholder="https://files.catbox.moe/abc.png"
+          onChange={e => setForm({ ...form, imageUrl: e.target.value })}
           className="bg-gray-800/50 border-gray-600/50 text-white placeholder:text-gray-600 focus:border-purple-500/50 h-9 font-mono text-xs"
         />
         {/* Live preview ảnh chính */}
-        {form.image && (
+        {form.imageUrl && (
           <div className="mt-2">
-            <ImagePreview src={form.image} alt="Ảnh chính" size="lg" />
+            <ImagePreview src={form.imageUrl} alt="Ảnh chính" size="lg" />
           </div>
         )}
       </div>
@@ -412,16 +456,16 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
         <div>
           <Label className="text-xs text-gray-400 mb-1 block">🔗 Link tải xuống</Label>
           <Input
-            value={form.downloadLink || form.downloadUrl || ''} placeholder="https://mega.nz/..."
-            onChange={e => setForm({ ...form, downloadLink: e.target.value })}
+            value={form.downloadUrl || ''} placeholder="https://mega.nz/..."
+            onChange={e => setForm({ ...form, downloadUrl: e.target.value })}
             className="bg-gray-800/50 border-gray-600/50 text-white placeholder:text-gray-600 focus:border-purple-500/50 h-9 text-xs"
           />
         </div>
         <div>
           <Label className="text-xs text-gray-400 mb-1 block">🎬 Link demo</Label>
           <Input
-            value={form.demoLink || form.demoUrl || ''} placeholder="https://youtube.com/..."
-            onChange={e => setForm({ ...form, demoLink: e.target.value })}
+            value={form.demoUrl || ''} placeholder="https://youtube.com/..."
+            onChange={e => setForm({ ...form, demoUrl: e.target.value })}
             className="bg-gray-800/50 border-gray-600/50 text-white placeholder:text-gray-600 focus:border-purple-500/50 h-9 text-xs"
           />
         </div>
@@ -513,8 +557,8 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
               <Label className="text-xs text-gray-400 mb-1 block">Rating (0-5)</Label>
               <Input
                 type="number" min="0" max="5" step="0.1"
-                value={form.rating || ''} placeholder="4.5"
-                onChange={e => setForm({ ...form, rating: e.target.value })}
+                value={form.averageRating || ''} placeholder="4.5"
+                onChange={e => setForm({ ...form, averageRating: e.target.value })}
                 className="bg-gray-800/50 border-gray-600/50 text-white h-8 text-sm"
               />
             </div>
@@ -662,7 +706,7 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
                   <div key={product.id} className="group bg-gray-800/30 rounded-xl border border-gray-700/50 overflow-hidden hover:border-purple-500/50 transition-all">
                     <div className="relative h-36">
                       <img
-                        src={product.image || '/placeholder.svg'}
+                        src={product.imageUrl || '/placeholder.svg'}
                         alt={product.title}
                         className="w-full h-full object-cover"
                         onError={e => { (e.target as HTMLImageElement).src = '/placeholder.svg' }}
@@ -697,7 +741,7 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
                       {/* Ảnh */}
                       <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-gray-800/50">
                         <img
-                          src={product.image || '/placeholder.svg'} alt={product.title}
+                          src={product.imageUrl || '/placeholder.svg'} alt={product.title}
                           className="w-full h-full object-cover"
                           onError={e => { (e.target as HTMLImageElement).src = '/placeholder.svg' }}
                           loading="lazy"
@@ -713,21 +757,21 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
                         <div className="flex flex-wrap items-center gap-2">
                           {product.category && <Badge variant="outline" className="border-purple-500/30 text-purple-300 text-xs px-1.5 py-0">{product.category}</Badge>}
                           <span className="text-green-400 font-bold text-sm">{product.price?.toLocaleString('vi-VN')}đ</span>
-                          {product.rating > 0 && <span className="text-yellow-400 text-xs">⭐ {parseFloat(product.rating).toFixed(1)}</span>}
-                          {product.downloads > 0 && <span className="text-gray-500 text-xs">📥 {product.downloads}</span>}
+                          {product.averageRating > 0 && <span className="text-yellow-400 text-xs">⭐ {product.averageRating.toFixed(1)}</span>}
+                          {product.downloadCount > 0 && <span className="text-gray-500 text-xs">📥 {product.downloadCount}</span>}
                         </div>
                       </div>
 
                       {/* Actions */}
                       <div className="flex items-center gap-1.5 flex-shrink-0">
-                        {product.downloadLink && (
-                          <a href={product.downloadLink} target="_blank" rel="noopener noreferrer"
+                        {product.downloadUrl && (
+                          <a href={product.downloadUrl} target="_blank" rel="noopener noreferrer"
                             className="p-1.5 rounded-lg bg-gray-700/50 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
                             <Download className="w-3.5 h-3.5" />
                           </a>
                         )}
-                        {product.demoLink && (
-                          <a href={product.demoLink} target="_blank" rel="noopener noreferrer"
+                        {product.demoUrl && (
+                          <a href={product.demoUrl} target="_blank" rel="noopener noreferrer"
                             className="p-1.5 rounded-lg bg-gray-700/50 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
                             <ExternalLink className="w-3.5 h-3.5" />
                           </a>
@@ -752,9 +796,9 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
                       <div className="mx-3 mb-2 p-3 bg-gray-800/30 rounded-b-xl border border-t-0 border-gray-700/30 text-xs text-gray-400 space-y-2">
                         {product.description && <p className="line-clamp-3 text-gray-300">{product.description}</p>}
                         <div className="flex flex-wrap gap-3">
-                          {product.image && <div>🖼️ <span className="font-mono text-gray-500 truncate">...{product.image.slice(-30)}</span></div>}
-                          {product.downloadLink && <div>📥 <a href={product.downloadLink} className="text-blue-400 hover:underline" target="_blank">Download</a></div>}
-                          {product.demoLink && <div>🎬 <a href={product.demoLink} className="text-blue-400 hover:underline" target="_blank">Demo</a></div>}
+                        {product.imageUrl && <div>🖼️ <span className="font-mono text-gray-500 truncate">...{product.imageUrl.slice(-30)}</span></div>}
+                        {product.downloadUrl && <div>📥 <a href={product.downloadUrl} className="text-blue-400 hover:underline" target="_blank">Download</a></div>}
+                        {product.demoUrl && <div>🎬 <a href={product.demoUrl} className="text-blue-400 hover:underline" target="_blank">Demo</a></div>}
                         </div>
                         {Array.isArray(product.tags) && product.tags.length > 0 && (
                           <div className="flex flex-wrap gap-1">

@@ -3,6 +3,10 @@ import type { Metadata } from "next"
 import localFont from "next/font/local"
 import "@/app/globals.css"
 import { ClientLayout } from "@/components/client-layout"
+import { validateEnv } from "@/lib/env-validator"
+
+// ✅ BUG #37: Validate environment variables on server start
+validateEnv()
 
 const inter = localFont({
   src: [

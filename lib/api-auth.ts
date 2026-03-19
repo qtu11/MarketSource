@@ -80,23 +80,24 @@ export async function verifyFirebaseToken(
     const ALLOW_EMAIL_AUTH = process.env.ALLOW_EMAIL_AUTH === 'true';
     const IS_DEVELOPMENT = process.env.NODE_ENV === 'development';
 
-    // ✅ SECURITY: Trong production, email auth LUÔN BỊ TẮT bất kể env config
+    // ✅ SECURITY: Trong production, email auth LUÔN BỊ TẮT
+    const IS_PRODUCTION = process.env.NODE_ENV === 'production';
     let canUseEmailAuth = false;
-    if (IS_DEVELOPMENT && ALLOW_EMAIL_AUTH) {
-      // Chỉ dev mode local mới cho phép email auth (bypass secret check)
+    
+    if (IS_DEVELOPMENT && ALLOW_EMAIL_AUTH && !IS_PRODUCTION) {
+      // Chỉ dev mode local mới cho phép email auth (bypass token check)
       const clientIP = getClientIP(request);
       const isLocalhost = clientIP === '127.0.0.1' || clientIP === '::1' || clientIP === '::ffff:127.0.0.1';
       canUseEmailAuth = isLocalhost;
     }
-    // Production: canUseEmailAuth = false luôn
 
-    // ✅ SECURITY: Log email auth attempts bị block
+    // ✅ SECURITY BUG #23: Log email auth attempts bị block
     if (userEmail && !canUseEmailAuth) {
       const { logger } = await import('@/lib/logger');
-      logger.warn('Email auth attempt blocked', {
+      logger.warn('Email auth attempt blocked (Spoofing risk)', {
         userEmail,
         ip: getClientIP(request),
-        reason: !IS_DEVELOPMENT ? 'production_blocked' : 'dev_not_localhost'
+        env: process.env.NODE_ENV
       });
     }
 
@@ -303,6 +304,22 @@ export async function requireAdmin(request: NextRequest) {
   const adminIdentity = await validateAdminToken(tokenFromCookie || tokenFromHeader);
 
   if (adminIdentity) {
+    // ✅ BUG #31: Validate CSRF for sensitive actions (POST, PUT, DELETE)
+    if (['POST', 'PUT', 'DELETE'].includes(request.method)) {
+      const csrfHeader = request.headers.get('X-CSRF-Token');
+      const csrfCookie = request.cookies.get('csrf-token')?.value;
+      
+      if (!csrfHeader || !csrfCookie || csrfHeader !== csrfCookie) {
+        const { logger } = await import('@/lib/logger');
+        logger.warn('CSRF validation failed for admin action', {
+          method: request.method,
+          hasHeader: !!csrfHeader,
+          hasCookie: !!csrfCookie,
+          ip: getClientIP(request)
+        });
+        throw new Error('CSRF validation failed: Invalid or missing token');
+      }
+    }
     return adminIdentity;
   }
 
@@ -315,6 +332,14 @@ export async function requireAdmin(request: NextRequest) {
   const hasAdminRole = await isDatabaseAdmin(user.email);
 
   if (hasAdminRole) {
+    // ✅ BUG #31: Validate CSRF for sensitive actions for Firebase sessions too
+    if (['POST', 'PUT', 'DELETE'].includes(request.method)) {
+      const csrfHeader = request.headers.get('X-CSRF-Token');
+      const csrfCookie = request.cookies.get('csrf-token')?.value;
+      if (!csrfHeader || !csrfCookie || csrfHeader !== csrfCookie) {
+        throw new Error('CSRF validation failed: Invalid or missing token');
+      }
+    }
     return user;
   }
 

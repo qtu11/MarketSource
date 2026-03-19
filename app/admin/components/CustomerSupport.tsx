@@ -71,8 +71,28 @@ export function CustomerSupport({ users: propUsers, adminUser }: CustomerSupport
       }
     }
     fetchUsers()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [propUsers]) // fetchUsers runs once on mount or when propUsers change
+
+  // Sync propUsers to localUsers when propUsers length changes
+  useEffect(() => {
+    if (propUsers && propUsers.length > 0) {
+      setLocalUsers((prev) => {
+        // Only update if propUsers has more users to prevent overwriting fetched data
+        if (propUsers.length > prev.length) {
+          const currentMap = new Map(prev.map((u) => [u.email, u]))
+          let changed = false
+          propUsers.forEach((newU: any) => {
+            if (!currentMap.has(newU.email)) {
+              currentMap.set(newU.email, newU)
+              changed = true
+            }
+          })
+          return changed ? Array.from(currentMap.values()) : prev
+        }
+        return prev
+      })
+    }
+  }, [propUsers])
 
 
   // Debounce search

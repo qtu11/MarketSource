@@ -253,22 +253,12 @@ export function ProductsSection() {
         >
           {filteredProducts.map(product => {
             const priceValue = toNumber(product.price) ?? 0
-            const rawOriginalPrice = product.originalPrice ?? product.original_price ?? null
+            const rawOriginalPrice = product.originalPrice ?? null
             const originalPriceValue = toNumber(rawOriginalPrice)
-            const imageSrc = product.image || product.imageUrl || product.image_url || "/placeholder.svg"
-            const ratingValue =
-              typeof product.rating === "number"
-                ? product.rating
-                : typeof product.average_rating === "number"
-                  ? product.average_rating
-                  : 0
-            const downloadsValue =
-              typeof product.downloads === "number"
-                ? product.downloads
-                : typeof product.download_count === "number"
-                  ? product.download_count
-                  : 0
-            const demoLink = product.demoLink || product.demoUrl || product.demo_url || null
+            const imageSrc = product.imageUrl || "/placeholder.svg"
+            const ratingValue = product.averageRating || 0
+            const downloadsValue = product.downloadCount || 0
+            const demoLink = product.demoUrl || null
 
             return (
               <motion.article

@@ -8,47 +8,33 @@
  */
 export function mapBackendToFrontend(backendProduct: any): any {
   return {
-    id: backendProduct.id?.toString() || backendProduct.id,
+    id: Number(backendProduct.id),
     title: backendProduct.title,
-    description: backendProduct.description,
-    detailedDescription: backendProduct.detailed_description,
-    price: parseFloat(backendProduct.price || '0'),
-    originalPrice: backendProduct.original_price ? parseFloat(backendProduct.original_price) : parseFloat(backendProduct.price || '0'),
-    category: backendProduct.category,
-    // Map image fields
-    image: backendProduct.image_url || backendProduct.image || '/placeholder.svg',
-    imageUrl: backendProduct.image_url,
+    description: backendProduct.description || null,
+    detailedDescription: backendProduct.detailed_description || null,
+    price: Number(backendProduct.price) || 0,
+    originalPrice: backendProduct.original_price ? Number(backendProduct.original_price) : (Number(backendProduct.price) || 0),
+    category: backendProduct.category || null,
+    imageUrl: backendProduct.image_url || null,
     imageUrls: (() => {
       const raw = backendProduct.image_urls;
       if (Array.isArray(raw)) return raw.filter(Boolean);
       if (typeof raw === 'string' && raw.trim()) {
-        // Thử parse JSON trước
         try { return JSON.parse(raw).filter(Boolean); } catch {}
-        // Fallback: CSV (url1, url2, url3)
         return raw.split(',').map((s: string) => s.trim()).filter(Boolean);
       }
       return [];
     })(),
-    // Map download fields
-    downloadLink: backendProduct.download_url || backendProduct.downloadUrl,
-    downloadUrl: backendProduct.download_url,
-    // Map demo fields
-    demoLink: backendProduct.demo_url || backendProduct.demoUrl,
-    demoUrl: backendProduct.demo_url,
-    // Map rating fields
-    rating: parseFloat(backendProduct.average_rating || backendProduct.rating || '0'),
-    averageRating: parseFloat(backendProduct.average_rating || '0'),
+    downloadUrl: backendProduct.download_url || null,
+    demoUrl: backendProduct.demo_url || null,
+    averageRating: Number(backendProduct.average_rating) || 0,
     totalRatings: parseInt(backendProduct.total_ratings || '0'),
-    // Map download count
-    downloads: parseInt(backendProduct.download_count || backendProduct.downloads || '0'),
     downloadCount: parseInt(backendProduct.download_count || '0'),
-    // Other fields
     tags: Array.isArray(backendProduct.tags) ? backendProduct.tags : (backendProduct.tags ? [backendProduct.tags] : []),
-    isActive: backendProduct.is_active !== undefined ? backendProduct.is_active : true,
-    isFeatured: backendProduct.is_featured || false,
-    featured: backendProduct.is_featured || false,
-    createdAt: backendProduct.created_at || backendProduct.createdAt,
-    updatedAt: backendProduct.updated_at || backendProduct.updatedAt,
+    isActive: backendProduct.is_active !== undefined ? Boolean(backendProduct.is_active) : true,
+    isFeatured: Boolean(backendProduct.is_featured),
+    created_at: backendProduct.created_at || new Date().toISOString(),
+    updated_at: backendProduct.updated_at || new Date().toISOString(),
   };
 }
 

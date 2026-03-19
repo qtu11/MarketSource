@@ -102,7 +102,13 @@ function CheckoutContent() {
     setCartItems(cart)
   }, [router])
 
-  const totalAmount = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+  const totalAmount = cartItems
+    .filter((item: any) => item.quantity === undefined || Number(item.quantity) > 0)
+    .reduce((sum, item) => {
+      const priceNum = typeof item.price === 'number' ? item.price : Number(item.price) || 0;
+      const qtyNum = item.quantity !== undefined ? Number(item.quantity) : 1;
+      return sum + (priceNum * Math.max(0, qtyNum));
+    }, 0)
 
   const handlePurchase = async () => {
     if (!currentUser || cartItems.length === 0) return
@@ -111,6 +117,12 @@ function CheckoutContent() {
     setError("")
 
     try {
+      // Check if data is valid
+      if (isNaN(totalAmount) || totalAmount < 0 || !isFinite(totalAmount)) {
+        setError("Dữ liệu giỏ hàng không hợp lệ!")
+        return
+      }
+
       // Check if user has enough balance
       if ((currentUser.balance || 0) < totalAmount) {
         setError("Số dư không đủ. Vui lòng nạp thêm tiền vào tài khoản.")
@@ -146,6 +158,8 @@ function CheckoutContent() {
       // Đảm bảo purchase thành công mới trừ tiền
       // Balance đã được trừ trong createPurchase() function (transaction-safe)
       const purchaseResults = [];
+      const successfulItems: number[] = [];
+      let lastError = null;
       // ✅ BUG #9+#12 FIX: Dùng apiPost thay vì raw fetch + localStorage token
       const { apiPost } = await import('@/lib/api-client');
       try {
@@ -153,7 +167,7 @@ function CheckoutContent() {
           const result = await apiPost('/api/purchases', {
             userId: currentUser.uid || currentUser.id,
             productId: item.id,
-            amount: item.price * item.quantity,
+            amount: (typeof item.price === 'number' ? item.price : Number(item.price) || 0) * (item.quantity !== undefined ? Number(item.quantity) : 1),
             userEmail: currentUser.email
           });
           
@@ -161,12 +175,34 @@ function CheckoutContent() {
             throw new Error(result.error || 'Purchase failed');
           }
           purchaseResults.push(result);
+          successfulItems.push(item.id);
         }
       } catch (purchaseError: any) {
-        logger.error('Failed to create purchase records in database', purchaseError);
-        setError(purchaseError.message || 'Không thể tạo đơn hàng. Vui lòng thử lại!');
-        setIsProcessing(false);
-        return; // ✅ FIX: Stop here nếu purchase fail, không trừ tiền
+        logger.error('Failed processing purchase records', purchaseError);
+        lastError = purchaseError;
+      }
+
+      // Giữ lại item lỗi
+      const remainingCart = cartItems.filter(item => !successfulItems.includes(item.id));
+      setCartItems(remainingCart);
+
+      if (remainingCart.length === 0) {
+        removeLocalStorage("cartItems");
+      } else {
+        setLocalStorage("cartItems", remainingCart);
+        window.dispatchEvent(new Event("cartUpdated"));
+        
+        if (lastError) {
+          setError('Một số sản phẩm thanh toán bị lỗi: ' + (lastError.message || 'Unknown Error') + '. Hệ thống đã ghi nhận các sản phẩm thành công.');
+          setIsProcessing(false);
+          // Refetch fresh balance to show correctly
+          const { userManager } = await import('@/lib/userManager');
+          const updatedUserData = await userManager.getUser();
+          if (updatedUserData) {
+            setCurrentUser({...currentUser, balance: updatedUserData.balance});
+          }
+          return;
+        }
       }
 
       // ✅ FIX: Chỉ update balance SAU KHI tất cả purchases thành công
@@ -175,9 +211,14 @@ function CheckoutContent() {
       // Reload user để có balance mới nhất từ database
       const updatedUserData = await userManager.getUser();
       if (updatedUserData) {
+        const totalPaid = cartItems
+          .filter(item => successfulItems.includes(item.id))
+          .reduce((sum, item) => sum + ((typeof item.price === 'number' ? item.price : Number(item.price) || 0) * (item.quantity !== undefined ? Number(item.quantity) : 1)), 0);
+
         const updatedUser = {
           ...currentUser,
-          balance: updatedUserData.balance || (currentUser.balance || 0) - totalAmount
+          ...updatedUserData, // ✅ Mới đúng, merge hết Data mới nhất để không mất loginCount, avatar, v.v
+          balance: updatedUserData.balance || (currentUser.balance || 0) - totalPaid
         };
         setLocalStorage("currentUser", updatedUser);
         setCurrentUser(updatedUser);
@@ -330,8 +371,8 @@ function CheckoutContent() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-semibold">{(item.price * item.quantity).toLocaleString('vi-VN')}đ</p>
-                      <p className="text-sm text-muted-foreground">{item.price.toLocaleString('vi-VN')}đ x {item.quantity}</p>
+                      <p className="font-semibold">{((typeof item.price === 'number' ? item.price : Number(item.price) || 0) * (item.quantity !== undefined ? Number(item.quantity) : 1)).toLocaleString('vi-VN')}đ</p>
+                      <p className="text-sm text-muted-foreground">{(typeof item.price === 'number' ? item.price : Number(item.price) || 0).toLocaleString('vi-VN')}đ x {item.quantity !== undefined ? Number(item.quantity) : 1}</p>
                     </div>
                   </div>
                 ))}

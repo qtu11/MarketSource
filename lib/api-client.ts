@@ -9,8 +9,11 @@ import { initializeApp, getApps } from 'firebase/app';
 import { fetchWithTimeout } from './fetch-with-timeout';
 import { getLocalStorage } from './localStorage-utils';
 import { logger } from './logger-client';
+import { toast } from 'sonner';
 
 let firebaseApp: any = null;
+let cachedToken: string | null = null;
+let tokenExpireTime: number = 0;
 
 // Initialize Firebase nếu chưa có
 async function getFirebaseApp() {
@@ -97,7 +100,15 @@ export async function getAuthToken(): Promise<string | null> {
       return null;
     }
 
-    const token = await user.getIdToken(true); // Force refresh
+    // ✅ BUG #24 FIX: Return cached token if still valid (30 mins cache to be safe)
+    const now = Date.now();
+    if (cachedToken && tokenExpireTime > now) {
+      return cachedToken;
+    }
+
+    const token = await user.getIdToken(false); // false = use cache if available in Firebase SDK
+    cachedToken = token;
+    tokenExpireTime = now + 1800000; // 30 minutes cache
     return token;
   } catch (error) {
     logger.error('Error getting auth token:', error);
@@ -192,7 +203,7 @@ export async function getAuthHeaders(): Promise<HeadersInit> {
  */
 export async function apiRequest(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit & { silent?: boolean } = {}
 ): Promise<any> {
   try {
     const headers = await getAuthHeaders();
@@ -256,50 +267,40 @@ export async function apiRequest(
     });
 
     if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.error || errorData.message || response.statusText || `Lỗi ${response.status}`;
+
+      // ✅ BUG #32: Hiển thị thông báo lỗi lỗi nếu không ở chế độ silent
+      if (typeof window !== 'undefined' && !options.silent) {
+        toast.error(`Lỗi API: ${errorMessage}`, {
+          description: `Endpoint: ${endpoint.split('?')[0].split('/').pop()}`,
+          duration: 5000,
+        });
+      }
+
       // Handle 401 - Unauthorized
       if (response.status === 401) {
-        const errorData = await response.json().catch(() => ({}));
         // Check if user is logged in
         const isLoggedIn = typeof window !== 'undefined' && getLocalStorage<string>('isLoggedIn', 'false') === 'true';
         if (isLoggedIn) {
-          // Log chi tiết để debug
-          const currentUser = getLocalStorage<unknown>('currentUser', null);
-          const qtusdevUser = getLocalStorage<unknown>('qtusdev_user', null);
-          const savedUser = currentUser ? JSON.stringify(currentUser) : (qtusdevUser ? JSON.stringify(qtusdevUser) : null);
-          let userEmail: string | null = null;
-          if (savedUser) {
-            try {
-              const user = JSON.parse(savedUser);
-              userEmail = user.email || null;
-            } catch {
-              userEmail = 'parse_error';
-            }
-          }
-          logger.warn('401 Unauthorized - User may need to re-login', {
-            endpoint,
-            hasUser: !!savedUser,
-            userEmail
-          });
+          logger.warn('401 Unauthorized - User may need to re-login', { endpoint });
         }
-        throw new Error(
-          errorData.error || errorData.message || 'Unauthorized: Please login again'
-        );
       }
 
-      // Handle 429 - Rate limited
-      if (response.status === 429) {
-        throw new Error('Too many requests. Please wait a moment and try again.');
-      }
-
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(
-        errorData.error || errorData.message || `API error: ${response.statusText}`
-      );
+      throw new Error(errorMessage);
     }
 
     return await response.json();
   } catch (error: any) {
     logger.error('API request error:', error);
+    
+    // ✅ BUG #32: Hiển thị thông báo lỗi kết nối nếu không ở chế độ silent
+    if (typeof window !== 'undefined' && !options.silent) {
+      toast.error('Lỗi kết nối API', {
+        description: error.message || 'Vui lòng kiểm tra lại đường truyền mạng',
+      });
+    }
+    
     throw error;
   }
 }
@@ -307,7 +308,7 @@ export async function apiRequest(
 /**
  * GET request
  */
-export async function apiGet(endpoint: string, params?: Record<string, any>) {
+export async function apiGet(endpoint: string, params?: Record<string, any>, options?: RequestInit) {
   // Check if running in browser
   if (typeof window === 'undefined') {
     throw new Error('apiGet can only be called in browser environment');
@@ -325,6 +326,7 @@ export async function apiGet(endpoint: string, params?: Record<string, any>) {
   return apiRequest(url.toString(), {
     method: 'GET',
     credentials: 'include',
+    ...options
   });
 }
 

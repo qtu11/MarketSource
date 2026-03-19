@@ -175,7 +175,7 @@ export default function DashboardPage() {
     if (role === "admin" || role === "superadmin" || role === "user") {
       return role
     }
-    return undefined
+    return "user"
   }
 
   const submitProfile = useCallback(
@@ -257,6 +257,13 @@ export default function DashboardPage() {
   const handleAvatarChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file || !currentUser?.email) return
+
+    // ✅ BUG #28: Giới hạn dung lượng file upload (2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      setProfileMessage({ type: "error", text: "Avatar không được vượt quá 2MB" })
+      return
+    }
+
     setIsUploadingAvatar(true)
     setProfileMessage(null)
     try {
@@ -970,7 +977,7 @@ export default function DashboardPage() {
           uid: completeUser.uid,
           email: completeUser.email,
           provider: completeUser.provider,
-          balance: completeUser.balance
+          balance: Number(completeUser.balance)
         })
 
         // Merge với data từ database nếu có
@@ -982,14 +989,14 @@ export default function DashboardPage() {
               const fallbackEmail = syncedUserData?.email || completeUser.email || 'unknown@qtus.dev';
               const mergedUser: User & UserData = {
                 ...completeUser,
-                id: completeUser.id || syncedUserData?.id || syncedUserData?.uid || userUid || '',
+                id: Number(completeUser.id || syncedUserData?.id || 0),
                 uid: userUid,
                 email: fallbackEmail,
                 name: syncedUserData?.name || syncedUserData?.displayName || completeUser.name,
                 displayName: syncedUserData?.displayName || syncedUserData?.name || completeUser.displayName,
                 provider: syncedUserData?.provider || completeUser.provider || 'email',
-                balance: syncedUserData?.balance ?? completeUser.balance ?? 0,
-                loginCount: syncedUserData?.loginCount ?? completeUser.loginCount ?? 1,
+                balance: Number(syncedUserData?.balance ?? completeUser.balance ?? 0),
+                loginCount: Number(syncedUserData?.loginCount ?? completeUser.loginCount ?? 1),
                 lastActivity: syncedUserData?.lastActivity || completeUser.lastActivity || new Date().toISOString(),
                 ipAddress: userIP !== "Loading..." ? userIP : (syncedUserData?.ip || syncedUserData?.ipAddress || completeUser.ipAddress || 'Unknown'),
                 deviceInfo: deviceInfo || completeUser.deviceInfo || syncedUserData?.meta?.deviceInfo,
@@ -1505,6 +1512,7 @@ export default function DashboardPage() {
                 const completeUser: User = {
                   ...currentUserFromStorage,
                   ...syncedUserData,
+                  id: Number(syncedUserData.id || currentUserFromStorage.id || 0),
                   uid: syncedUserData.uid || currentUserFromStorage.uid,
                   email: syncedUserData.email || currentUserFromStorage.email,
                   name: syncedUserData.name || syncedUserData.displayName || currentUserFromStorage.name,

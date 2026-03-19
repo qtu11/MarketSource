@@ -65,7 +65,8 @@ export default function ProductDetailPage() {
     const handleAddToCart = (productToAdd: any) => {
         try {
             // Import dynamic auth mechanism if needed or fallback to local storage logic for cart
-            const cart = JSON.parse(localStorage.getItem('cart') || '[]')
+            const cartItemsKey = 'cartItems';
+            const cart = JSON.parse(localStorage.getItem(cartItemsKey) || '[]')
             const existingItem = cart.find((item: any) => item.id === productToAdd.id)
 
             if (existingItem) {
@@ -74,7 +75,7 @@ export default function ProductDetailPage() {
             }
 
             const newCart = [...cart, productToAdd]
-            localStorage.setItem('cart', JSON.stringify(newCart))
+            localStorage.setItem(cartItemsKey, JSON.stringify(newCart))
 
             // Dispatch event for FloatingHeader cart badge update
             window.dispatchEvent(new Event('cartUpdated'))

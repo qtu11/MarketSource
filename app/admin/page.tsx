@@ -39,7 +39,7 @@ const ThreeJSAdmin = dynamic(
 )
 import { apiGet } from "@/lib/api-client"
 import { logger } from "@/lib/logger"
-import { User as UserType, Deposit as DepositType, Withdrawal as WithdrawalType } from "@/types"
+import { User as UserType, Product as ProductType, Deposit as DepositType, Withdrawal as WithdrawalType } from "@/types"
 
 // Import các component riêng biệt
 import { Overview } from "./components/Overview"
@@ -86,11 +86,11 @@ function AdminPageContent() {
 
   // Data states
   const [users, setUsers] = useState<UserType[]>([])
-  const [products, setProducts] = useState<Array<Record<string, unknown>>>([])
+  const [products, setProducts] = useState<ProductType[]>([])
   const [pendingDeposits, setPendingDeposits] = useState<DepositType[]>([])
   const [pendingWithdrawals, setPendingWithdrawals] = useState<WithdrawalType[]>([])
-  const [notifications, setNotifications] = useState<Array<Record<string, unknown>>>([])
-  const [purchases, setPurchases] = useState<Array<Record<string, unknown>>>([])
+  const [notifications, setNotifications] = useState<any[]>([])
+  const [purchases, setPurchases] = useState<any[]>([])
   const [selectedUsersMap, setSelectedUsersMap] = useState<Record<string, boolean>>({})
   const [transactionFilters, setTransactionFilters] = useState<TransactionFilterState>({
     q: "",
@@ -266,9 +266,11 @@ function AdminPageContent() {
           ...user,
           registrationTime: user.createdAt || user.joinedAt || new Date().toISOString(),
           totalSpent: user.totalSpent || 0,
-          uid: user.uid || user.id,
-          status: user.role === 'admin' ? 'active' : (user.status || 'active')
-        })));
+          uid: user.uid || user.id?.toString(),
+          status: user.role === 'admin' ? 'active' : (user.status || 'active'),
+          balance: Number(user.balance) || 0,
+          loginCount: Number(user.loginCount) || 0
+        } as UserType)));
       }
 
       // ✅ BUG #10 FIX: Load notifications từ DB thay vì localStorage
