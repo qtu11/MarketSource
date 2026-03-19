@@ -67,12 +67,14 @@ export function Analytics({ users, products, purchases, deposits, withdrawals }:
     // Deposits là tiền nạp của user, không phải doanh thu bán hàng
     const netRevenue = totalRevenue
 
-    // User analytics
+    // ✅ FIX: activeUsers — dùng updated_at hoặc last_sign_in_at thay vì lastActivity (không có trong DB)
+    // Coi user là "hoạt động" nếu updated_at trong 30 ngày gần đây
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
     const activeUsers = users.filter(user => {
-      if (!user.lastActivity) return false
-      const lastActivity = new Date(user.lastActivity)
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-      return lastActivity >= thirtyDaysAgo
+      const activityDate = user.lastActivity || user.last_sign_in_at || user.updated_at || user.updatedAt
+      if (!activityDate) return false
+      const d = new Date(activityDate)
+      return !isNaN(d.getTime()) && d >= thirtyDaysAgo
     }).length
 
     // Product analytics
@@ -129,10 +131,15 @@ export function Analytics({ users, products, purchases, deposits, withdrawals }:
       }
     }).reverse()
 
-    // User behavior analytics
+    // ✅ FIX: conversionRate — tỷ lệ user đã mua / tổng user (không chia filtered users trong kỳ)
+    // Vì filteredUsers là user mới đăng ký trong kỳ, không phải tổng user truy cập
+    const uniqueBuyers = new Set(
+      purchases.map(p => (p.user_id || p.userId || p.uid || p.userEmail || p.user_email)?.toString()).filter(Boolean)
+    ).size
     const userBehavior = {
       averageOrderValue: totalRevenue / (filteredPurchases.length || 1),
-      conversionRate: (filteredPurchases.length / (filteredUsers.length || 1)) * 100,
+      // ✅ FIX: conversionRate = (số user đã mua / tổng user) * 100
+      conversionRate: users.length > 0 ? (uniqueBuyers / users.length) * 100 : 0,
       repeatCustomers: users.filter(user => {
         const userId = (user.uid || user.id)?.toString()
         const userPurchases = purchases.filter(p => {
@@ -155,7 +162,9 @@ export function Analytics({ users, products, purchases, deposits, withdrawals }:
       dailyData,
       userBehavior,
       newUsers: filteredUsers.length,
-      totalTransactions: filteredPurchases.length
+      totalUsersAll: users.length,      // ✅ Tổng users toàn bộ (không filter theo kỳ)
+      totalTransactions: filteredPurchases.length,
+      uniqueBuyers,                      // ✅ Số user đã mua ít nhất 1 lần
     }
   }, [users, products, purchases, deposits, withdrawals, filterByTimeRange, timeRange])
 
@@ -303,7 +312,7 @@ export function Analytics({ users, products, purchases, deposits, withdrawals }:
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">{analytics.activeUsers}</div>
             <p className="text-xs text-muted-foreground">
-              {analytics.newUsers} người dùng mới
+              {analytics.newUsers} người mới · Tổng {analytics.totalUsersAll || users.length} user
             </p>
           </CardContent>
         </Card>
@@ -333,7 +342,7 @@ export function Analytics({ users, products, purchases, deposits, withdrawals }:
               {analytics.userBehavior.conversionRate.toFixed(1)}%
             </div>
             <p className="text-xs text-muted-foreground">
-              {analytics.userBehavior.repeatCustomers} khách hàng quay lại
+              {analytics.uniqueBuyers || 0} đã mua · {analytics.userBehavior.repeatCustomers} quay lại
             </p>
           </CardContent>
         </Card>

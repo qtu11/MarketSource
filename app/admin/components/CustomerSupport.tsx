@@ -35,24 +35,43 @@ export function CustomerSupport({ users: propUsers, adminUser }: CustomerSupport
       try {
         const { apiGet } = await import('@/lib/api-client')
         const result = await apiGet('/api/users')
-        if (result?.users && Array.isArray(result.users)) {
-          setLocalUsers(result.users.map((u: any) => ({
+
+        // ✅ FIX: /api/users trả về cột `id` (không phải `uid`) từ DB
+        // Map lại để đảm bảo uid luôn có giá trị
+        const rawUsers = result?.users || result?.data || []
+        if (Array.isArray(rawUsers) && rawUsers.length > 0) {
+          setLocalUsers(rawUsers.map((u: any) => ({
             ...u,
-            uid: u.uid || u.id,
+            // ✅ KEY: uid phải map đúng từ DB id field
+            uid: u.uid || u.id || u.user_id,
+            name: u.name || u.username || u.full_name,
+            email: u.email,
           })))
-        } else if (result?.data && Array.isArray(result.data)) {
-          setLocalUsers(result.data.map((u: any) => ({
+        } else {
+          logger.warn('fetchUsers: API returned empty users array', { result })
+          // Fallback: dùng propUsers nếu API trả rỗng
+          if (propUsers.length > 0) {
+            setLocalUsers(propUsers.map((u: any) => ({
+              ...u,
+              uid: u.uid || u.id,
+            })))
+          }
+        }
+      } catch (error) {
+        logger.warn('Could not fetch users from API, falling back to prop users', { error })
+        // Fallback khi API lỗi
+        if (propUsers.length > 0) {
+          setLocalUsers(propUsers.map((u: any) => ({
             ...u,
             uid: u.uid || u.id,
           })))
         }
-      } catch (error) {
-        logger.warn('Could not fetch users from API, using prop users', { error })
       } finally {
         setFetchingUsers(false)
       }
     }
     fetchUsers()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
 
@@ -188,6 +207,19 @@ export function CustomerSupport({ users: propUsers, adminUser }: CustomerSupport
 
         {/* Users List */}
         <div className="flex-1 overflow-y-auto">
+          {fetchingUsers && localUsers.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+              <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mb-3" />
+              <p className="text-sm">Đang tải danh sách...</p>
+            </div>
+          )}
+
+          {!fetchingUsers && chatUsers.length === 0 && (
+            <div className="p-8 text-center text-slate-500 text-sm">
+              {debouncedSearchTerm ? 'Không tìm thấy khách hàng' : 'Chưa có khách hàng nào'}
+            </div>
+          )}
+
           {chatUsers.map((user) => {
             const userKey = (user.uid || user.id || '').toString()
             const isActive = activeChat === userKey
@@ -207,7 +239,7 @@ export function CustomerSupport({ users: propUsers, adminUser }: CustomerSupport
                 <div className="relative flex-shrink-0">
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm
                     ${isActive ? 'bg-gradient-to-br from-purple-500 to-pink-500' : 'bg-gradient-to-br from-slate-600 to-slate-700'}`}>
-                    {(user.name || user.email || '?')[0].toUpperCase()}
+                    {(user.name || user.email || '?')[0]?.toUpperCase() || '?'}
                   </div>
                   {isOnline && (
                     <Circle className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 fill-emerald-400 text-slate-900 stroke-[3]" />
@@ -229,12 +261,6 @@ export function CustomerSupport({ users: propUsers, adminUser }: CustomerSupport
               </div>
             )
           })}
-
-          {chatUsers.length === 0 && (
-            <div className="p-8 text-center text-slate-500 text-sm">
-              Không tìm thấy khách hàng
-            </div>
-          )}
         </div>
       </div>
 
