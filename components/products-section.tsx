@@ -10,6 +10,7 @@ import Image from "next/image"
 import { Product } from "@/types/product"
 import { apiGet } from "@/lib/api-client"
 import { mapBackendProductsToFrontend } from "@/lib/product-mapper"
+import { useRouter } from "next/navigation"
 import { logger } from "@/lib/logger-client"
 
 const containerVariants: Variants = {
@@ -52,6 +53,7 @@ function normalizeCategoryId(category: string | null | undefined): string {
 }
 
 export function ProductsSection() {
+  const router = useRouter()
   const [activeCategory, setActiveCategory] = useState("all")
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState([
@@ -499,11 +501,11 @@ export function ProductsSection() {
                       </p>
                     )}
                   </div>
-                  <div className="flex gap-3">
+                  <div className="flex flex-wrap gap-3">
                     {selectedProduct.demoLink && (
                       <Button
                         variant="outline"
-                        className="border-gray-200 dark:border-gray-700"
+                        className="border-gray-200 dark:border-gray-700 flex-1 sm:flex-none"
                         onClick={() => window.open(selectedProduct.demoLink, "_blank")}
                       >
                         <ExternalLink className="mr-2 h-4 w-4" />
@@ -511,8 +513,16 @@ export function ProductsSection() {
                       </Button>
                     )}
                     <Button
+                      variant="secondary"
+                      className="bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:hover:bg-purple-900/50 flex-1 sm:flex-none border border-purple-200 dark:border-purple-800"
+                      onClick={() => router.push(`/product/${selectedProduct.id}`)}
+                    >
+                      <Eye className="mr-2 h-4 w-4" />
+                      Xem chi tiết
+                    </Button>
+                    <Button
                       onClick={() => { handleAddToCart(selectedProduct); setSelectedProduct(null); }}
-                      className="bg-gradient-to-r from-purple-600 to-pink-600 shadow-lg shadow-purple-500/30"
+                      className="bg-gradient-to-r from-purple-600 to-pink-600 shadow-lg shadow-purple-500/30 flex-1 sm:flex-none"
                     >
                       <ShoppingCart className="mr-2 h-4 w-4" />
                       Mua ngay
