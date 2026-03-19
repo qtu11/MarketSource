@@ -97,8 +97,9 @@ const nextConfig = {
         hostname: 'files.catbox.moe',
       },
     ],
-    // ✅ FIX: Cloudflare Pages chưa hỗ trợ Image Optimization của Next.js
-    unoptimized: isCloudflarePages || process.env.NEXT_IMAGE_UNOPTIMIZED === 'true',
+    // ✅ FIX: Tắt Image Optimization — nhiều CDN (catbox.moe, etc.) block server-side fetch
+    // gây lỗi "Input Buffer is empty" → crash 500. Browser sẽ load ảnh trực tiếp từ URL gốc.
+    unoptimized: true,
   },
   // ✅ FIX: Next.js tự động expose NEXT_PUBLIC_* variables
   // env: {},

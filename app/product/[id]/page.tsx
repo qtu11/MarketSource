@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
-import Image from "next/image"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -143,13 +142,12 @@ export default function ProductDetailPage() {
                         {/* Gallery */}
                         <div className="space-y-4">
                             <div className="relative aspect-video w-full rounded-2xl overflow-hidden border border-black/10 dark:border-white/10 bg-white/50 dark:bg-black/50 backdrop-blur-sm group shadow-[0_4px_24px_rgba(0,0,0,0.05)] dark:shadow-none">
-                                <Image
-                                    src={activeImage}
+                                {/* ✅ FIX: Native img — tránh Next.js optimizer block catbox.moe */}
+                                <img
+                                    src={activeImage || '/placeholder.svg'}
                                     alt={product.title}
-                                    fill
-                                    className="object-contain transition-transform duration-500 group-hover:scale-105"
-                                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 66vw, 1200px"
-                                    priority
+                                    className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
+                                    onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.svg' }}
                                 />
                                 {product.featured && (
                                     <Badge className="absolute top-4 left-4 z-10 bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-orange-500/20 border-0">
@@ -166,12 +164,12 @@ export default function ProductDetailPage() {
                                             onClick={() => setActiveImage(img)}
                                             className={`relative w-24 h-16 rounded-lg overflow-hidden flex-shrink-0 border-2 transition-all ${activeImage === img ? 'border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.5)]' : 'border-transparent opacity-60 hover:opacity-100'}`}
                                         >
-                                            <Image
+                                            <img
                                                 src={img}
                                                 alt={`${product.title} - ${idx}`}
-                                                fill
-                                                className="object-cover"
-                                                sizes="96px"
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.svg' }}
+                                                loading="lazy"
                                             />
                                         </button>
                                     ))}
