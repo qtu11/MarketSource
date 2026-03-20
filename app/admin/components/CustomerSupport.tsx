@@ -173,8 +173,12 @@ export function CustomerSupport({ users: propUsers, adminUser }: CustomerSupport
       apiPost('/api/admin/send-telegram', {
         message: `💬 <b>TIN NHẮN TỪ ADMIN</b>\n\n👤 <b>Gửi tới:</b> ${user?.name || user?.email}\n💬 <b>Nội dung:</b> ${msgText}`,
         chatId: process.env.NEXT_PUBLIC_TELEGRAM_CHAT_ID
-      }).catch(() => { });
-    } catch { }
+      }).catch((err) => { 
+        logger.debug('Telegram admin notify failed (silent)', { error: err instanceof Error ? err.message : String(err) });
+      });
+    } catch (e) {
+      logger.debug('Telegram notification wrapper failed', { error: e instanceof Error ? e.message : String(e) });
+    }
 
     setSending(false)
   }

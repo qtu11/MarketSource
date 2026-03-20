@@ -32,4 +32,9 @@ export function validateEnv() {
   } else {
     logger.info('✅ Environment variables validated');
   }
+
+  return { 
+    success: missing.length === 0, 
+    errors: missing 
+  };
 }

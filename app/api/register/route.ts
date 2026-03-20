@@ -138,9 +138,14 @@ export async function POST(request: NextRequest) {
         userName: name,
         userEmail: email,
         ipAddress,
-      }).catch(() => { }); // Fire and forget
+      }).catch(async (err) => { 
+        const { logger } = await import('@/lib/logger');
+        logger.warn('Failed to notify new user registration (silent)', { error: err instanceof Error ? err.message : String(err) });
+      });
     } catch (e) {
-      // Silent fail - không block registration flow
+      // Silent fail - không block registration flow, nhưng vẫn log để debug
+      const { logger } = await import('@/lib/logger');
+      logger.debug('New user notification wrapper failed', { error: e instanceof Error ? e.message : String(e) });
     }
 
     // ✅ FIX: Xử lý Referral Code nếu có
@@ -166,7 +171,7 @@ export async function POST(request: NextRequest) {
       userId: result.id,
       user: {
         id: result.id,
-        uid: String(result.id), // Convert to string for compatibility
+        uid: typeof result.id === 'string' ? result.id : String(result.id), // ✅ BUG #46: Safe cast
         email,
         name,
         username: username || name,
@@ -174,12 +179,13 @@ export async function POST(request: NextRequest) {
         balance: fullUser?.balance ? parseFloat(String(fullUser.balance)) : 0,
       },
     });
+
   } catch (error: any) {
     const { logger } = await import('@/lib/logger');
     logger.error('Register API error', error, { email, endpoint: '/api/register' });
 
     // ✅ FIX: Handle unique constraint violation - sanitize error messages
-    const { createErrorResponse, sanitizeError } = await import('@/lib/error-handler');
+    const { createErrorResponse } = await import('@/lib/error-handler');
     const isDevelopment = process.env.NODE_ENV === 'development';
 
     if (error.code === '23505') {

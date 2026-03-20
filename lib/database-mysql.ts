@@ -75,6 +75,11 @@ function createPool(): Pool {
     connectionLimit,
     waitForConnections: true,
     queueLimit: 0,
+    // ✅ BUG #44: Thêm timeout cấu hình pool
+    connectTimeout: 10000, // 10s
+    idleTimeout: 60000,    // 60s
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0,
   })
 
   newPool

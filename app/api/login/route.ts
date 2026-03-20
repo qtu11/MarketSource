@@ -74,7 +74,11 @@ export async function POST(request: NextRequest) {
 
     // ✅ FIX: Tạo auth-token JWT cookie cho user sau login thành công
     // Đảm bảo /api/save-user có thể verify identity khi userManager.setUser() gọi
-    const jwtSecret = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || 'fallback-secret';
+    // ✅ SECURITY FIX: Loại bỏ fallback-secret (BUG #41)
+    const jwtSecret = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET;
+    if (!jwtSecret) {
+      throw new Error('Cấu hình hệ thống lỗi: Thiếu JWT_SECRET');
+    }
     const secret = new TextEncoder().encode(jwtSecret);
     const authToken = await new SignJWT({ 
       userId: String(user.id), 

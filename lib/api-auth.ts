@@ -69,7 +69,10 @@ export async function verifyFirebaseToken(
           };
         }
       }
-    } catch { /* Ignore cookie check errors */ }
+    } catch (e) { 
+      const { logger } = await import('@/lib/logger');
+      logger.debug('Cookie check skipped or failed', { error: e instanceof Error ? e.message : String(e) });
+    }
 
     const authHeader = request.headers.get('Authorization');
     const userEmail = request.headers.get('X-User-Email');
@@ -176,7 +179,11 @@ export async function verifyFirebaseToken(
             const { checkRateLimit } = await import('@/lib/rate-limit');
             const rateLimit = await checkRateLimit(`email_auth:${userEmail}:${ip}`, 120, 60);
             if (!rateLimit.success) return null;
-          } catch { return null; }
+          } catch (e) { 
+            const { logger } = await import('@/lib/logger');
+            logger.debug('Rate limit check skipped/failed in verifyFirebaseToken', { error: e instanceof Error ? e.message : String(e) });
+            return null; 
+          }
 
           const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
           if (emailRegex.test(userEmail)) {

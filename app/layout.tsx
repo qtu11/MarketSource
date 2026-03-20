@@ -5,8 +5,13 @@ import "@/app/globals.css"
 import { ClientLayout } from "@/components/client-layout"
 import { validateEnv } from "@/lib/env-validator"
 
-// ✅ BUG #37: Validate environment variables on server start
-validateEnv()
+// ✅ BUG #37 & #42: Validate environment variables on server start
+const envValidation = validateEnv()
+if (envValidation && !envValidation.success && process.env.NODE_ENV === 'production') {
+  // Trong production, crash app nếu thiếu biến quan trọng để bảo mật
+  console.error('❌ CRITICAL: Missing Environment Variables:', envValidation.errors)
+  throw new Error('Hệ thống không thể khởi động do thiếu cấu hình môi trường (ENV missing).')
+}
 
 const inter = localFont({
   src: [
@@ -40,7 +45,9 @@ export const metadata: Metadata = {
     address: false,
     telephone: false,
   },
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://market-source.vercel.app"),
+  metadataBase: process.env.NEXT_PUBLIC_SITE_URL 
+    ? new URL(process.env.NEXT_PUBLIC_SITE_URL) 
+    : new URL("http://localhost:3000"),
   alternates: {
     canonical: "/",
   },
