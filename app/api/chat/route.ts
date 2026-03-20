@@ -17,12 +17,14 @@ function sanitizeMessage(message: string): string {
   // ✅ BUG #10 FIX: Trực tiếp cắt chuỗi nếu quá dài trước khi sanitize
   const truncated = message.length > MAX_MESSAGE_LENGTH ? message.substring(0, MAX_MESSAGE_LENGTH) : message;
   
-  // ✅ BUG #5 FIX: Triệt để loại bỏ HTML tags (XSS Protection)
+  // ✅ BUG #5 HARD FIX: Absolutely no HTML allowed in chat messages
   const plainText = truncated.replace(/<[^>]*>/g, '').trim();
   
   return DOMPurify.sanitize(plainText, {
-    ALLOWED_TAGS: [], // No HTML allowed in chat
-    ALLOWED_ATTR: []
+    ALLOWED_TAGS: [], // No HTML tags
+    ALLOWED_ATTR: [], // No attributes
+    FORBID_TAGS: ['style', 'script', 'iframe', 'object', 'embed'],
+    FORBID_ATTR: ['onerror', 'onclick', 'onload']
   });
 }
 

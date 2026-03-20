@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
       logger.debug('New user notification wrapper failed', { error: e instanceof Error ? e.message : String(e) });
     }
 
-    // ✅ FIX: Xử lý Referral Code nếu có - Yêu cầu mã phải hợp lệ
+    // ✅ BUG #8 HARD FIX: Validate referral code existence
     if (referralCode && result.id) {
       try {
         const { getReferralByCodeMySQL, createReferralMySQL } = await import('@/lib/database-mysql');

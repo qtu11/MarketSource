@@ -311,23 +311,25 @@ export async function requireAdmin(request: NextRequest) {
   const tokenFromHeader = request.headers.get('X-Admin-Token');
   const adminIdentity = await validateAdminToken(tokenFromCookie || tokenFromHeader);
 
-  if (adminIdentity) {
-    // ✅ BUG #31: Validate CSRF for sensitive actions (POST, PUT, DELETE)
-    if (['POST', 'PUT', 'DELETE'].includes(request.method)) {
-      const csrfHeader = request.headers.get('X-CSRF-Token');
-      const csrfCookie = request.cookies.get('csrf-token')?.value;
-      
-      if (!csrfHeader || !csrfCookie || !verifyCSRFToken(csrfHeader, csrfCookie)) {
-        const { logger } = await import('@/lib/logger');
-        logger.warn('CSRF validation failed for admin action', {
-          method: request.method,
-          hasHeader: !!csrfHeader,
-          hasCookie: !!csrfCookie,
-          ip: getClientIP(request)
-        });
-        throw new Error('CSRF validation failed: Invalid or missing token');
-      }
+  // Check CSRF for sensitive actions
+  if (['POST', 'PUT', 'DELETE'].includes(request.method)) {
+    const csrfHeader = request.headers.get('X-CSRF-Token');
+    const csrfCookie = request.cookies.get('csrf-token')?.value;
+    
+    // ✅ BUG #1 FIX: Strict CSRF Verification as per BOSS request
+    if (!csrfHeader || !csrfCookie || !verifyCSRFToken(csrfHeader, csrfCookie)) {
+      const { logger } = await import('@/lib/logger');
+      logger.warn('CSRF validation failed for admin action', {
+        method: request.method,
+        hasHeader: !!csrfHeader,
+        hasCookie: !!csrfCookie,
+        ip: getClientIP(request)
+      });
+      throw new Error('CSRF validation failed: Invalid or missing token');
     }
+  }
+
+  if (adminIdentity) {
     return adminIdentity;
   }
 
@@ -340,14 +342,6 @@ export async function requireAdmin(request: NextRequest) {
   const hasAdminRole = await isDatabaseAdmin(user.email);
 
   if (hasAdminRole) {
-    // ✅ BUG #31: Validate CSRF for sensitive actions for Firebase sessions too
-    if (['POST', 'PUT', 'DELETE'].includes(request.method)) {
-      const csrfHeader = request.headers.get('X-CSRF-Token');
-      const csrfCookie = request.cookies.get('csrf-token')?.value;
-      if (!csrfHeader || !csrfCookie || !verifyCSRFToken(csrfHeader, csrfCookie)) {
-        throw new Error('CSRF validation failed: Invalid or missing token');
-      }
-    }
     return user;
   }
 

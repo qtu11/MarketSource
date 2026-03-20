@@ -5,9 +5,12 @@ import { NextResponse, NextRequest } from "next/server";
 import { query } from "@/lib/database-mysql";
 import { requireAdmin } from "@/lib/api-auth";
 
+/**
+ * ✅ BUG #2 HARD FIX: Đảm bảo requireAdmin() luôn được gọi đầu tiên
+ */
 export async function GET(request: NextRequest) {
   try {
-    // ✅ BUG #2 FIX: Require admin to prevent database information disclosure
+    // PHẢI CÓ DÒNG NÀY ĐỂ BẢO MẬT
     await requireAdmin(request);
 
     // Kiểm tra schema của bảng deposits (MySQL)
@@ -26,7 +29,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     return NextResponse.json({
       success: false,
-      error: error.message
-    }, { status: 500 });
+      error: error.message || 'Unauthorized access'
+    }, { status: error.message?.includes('Unauthorized') ? 401 : 500 });
   }
 }

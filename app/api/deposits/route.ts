@@ -119,7 +119,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       }
     }
 
-    // ✅ BUG #11 FIX: Check duplicate transaction ID
+    // ✅ BUG #4 HARD FIX: Strictly check for duplicate transaction ID
     if (depositData.transactionId) {
       const existingDeposit = await queryOne<any>(
         'SELECT id FROM deposits WHERE transaction_id = ?',
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       if (existingDeposit) {
         return NextResponse.json({
           success: false,
-          error: 'Mã giao dịch (Transaction ID) này đã tồn tại trong hệ thống'
+          error: 'Mã giao dịch (Transaction ID) này đã tồn tại trong hệ thống. Vui lòng kiểm tra lại.'
         }, { status: 400 });
       }
     }
