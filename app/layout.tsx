@@ -4,6 +4,7 @@ import localFont from "next/font/local"
 import "@/app/globals.css"
 import { ClientLayout } from "@/components/client-layout"
 import { validateEnv } from "@/lib/env-validator"
+import SessionTimeout from "@/components/SessionTimeout"
 
 // ✅ BUG #37 & #42: Validate environment variables on server start
 const envValidation = validateEnv()
@@ -113,7 +114,10 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </head>
       <body className={`${inter.className} bg-background text-foreground antialiased`}>
-        <ClientLayout>{children}</ClientLayout>
+        <ClientLayout>
+          {children}
+          <SessionTimeout />
+        </ClientLayout>
       </body>
     </html>
   )

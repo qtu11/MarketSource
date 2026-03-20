@@ -17,7 +17,10 @@ function sanitizeMessage(message: string): string {
   // ✅ BUG #10 FIX: Trực tiếp cắt chuỗi nếu quá dài trước khi sanitize
   const truncated = message.length > MAX_MESSAGE_LENGTH ? message.substring(0, MAX_MESSAGE_LENGTH) : message;
   
-  return DOMPurify.sanitize(truncated.trim(), {
+  // ✅ BUG #5 FIX: Triệt để loại bỏ HTML tags (XSS Protection)
+  const plainText = truncated.replace(/<[^>]*>/g, '').trim();
+  
+  return DOMPurify.sanitize(plainText, {
     ALLOWED_TAGS: [], // No HTML allowed in chat
     ALLOWED_ATTR: []
   });

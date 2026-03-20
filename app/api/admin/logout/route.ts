@@ -9,6 +9,16 @@ export const runtime = 'nodejs'
  */
 export async function POST(request: NextRequest) {
   try {
+    // ✅ BUG #6 FIX: Invalidate admin token in server-side blacklist
+    const tokenCookie = request.cookies.get('admin-token')?.value;
+    const tokenHeader = request.headers.get('X-Admin-Token');
+    const token = tokenCookie || tokenHeader;
+
+    if (token) {
+      const { invalidateAdminToken } = await import('@/lib/jwt');
+      invalidateAdminToken(token);
+    }
+
     const response = NextResponse.json({
       success: true,
       message: 'Logged out successfully',

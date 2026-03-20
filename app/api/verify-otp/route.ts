@@ -29,9 +29,9 @@ export async function POST(request: NextRequest) {
         const { email, otp } = validation.data;
         const normalizedEmail = email.trim().toLowerCase();
 
-        // ✅ BUG #12 FIX: OTP Brute-force Protection (5 attempts / 10 mins)
+        // ✅ BUG #12 FIX: OTP Brute-force Protection (5 attempts / 1 hour)
         const { checkRateLimitAndRespond } = await import('@/lib/rate-limit');
-        const rateLimitResponse = await checkRateLimitAndRespond(request, 5, 600, 'verify-otp', normalizedEmail);
+        const rateLimitResponse = await checkRateLimitAndRespond(request, 5, 3600, 'verify-otp', normalizedEmail);
         if (rateLimitResponse) return rateLimitResponse;
 
         const user = await getUserByEmail(normalizedEmail);

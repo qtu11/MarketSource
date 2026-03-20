@@ -9,7 +9,9 @@ import { z } from 'zod'
 // ✅ BUG #6 FIX: Blacklist disposable email domains
 const DISPOSABLE_DOMAINS = [
   'tempmail.com', '10minutemail.com', 'guerrillamail.com', 'maildrop.cc', 
-  'dispostable.com', 'mailinator.com', 'yopmail.com'
+  'dispostable.com', 'mailinator.com', 'yopmail.com', 'temp-mail.org',
+  'throwaway.email', 'sharklasers.com', 'guerrillamailblock.com',
+  'getairmail.com', 'maildrop.cc', 'tempmailaddress.com', '10minutemail.net'
 ];
 
 export const emailSchema = z.string()

@@ -148,17 +148,29 @@ export async function POST(request: NextRequest) {
       logger.debug('New user notification wrapper failed', { error: e instanceof Error ? e.message : String(e) });
     }
 
-    // ✅ FIX: Xử lý Referral Code nếu có
+    // ✅ FIX: Xử lý Referral Code nếu có - Yêu cầu mã phải hợp lệ
     if (referralCode && result.id) {
       try {
         const { getReferralByCodeMySQL, createReferralMySQL } = await import('@/lib/database-mysql');
         const referrer = await getReferralByCodeMySQL(referralCode);
         
-        if (referrer && referrer.id !== result.id) {
-          await createReferralMySQL(referrer.id, result.id);
-          const { logger } = await import('@/lib/logger');
-          logger.info('Referral linked successfully', { referrerId: referrer.id, referredId: result.id });
+        if (!referrer) {
+           return NextResponse.json(
+            { success: false, error: 'Mã giới thiệu không tồn tại trong hệ thống.' },
+            { status: 400 }
+          );
         }
+
+        if (referrer.id === result.id) {
+           return NextResponse.json(
+            { success: false, error: 'Bạn không thể tự giới thiệu chính mình.' },
+            { status: 400 }
+          );
+        }
+
+        await createReferralMySQL(referrer.id, result.id);
+        const { logger } = await import('@/lib/logger');
+        logger.info('Referral linked successfully', { referrerId: referrer.id, referredId: result.id });
       } catch (refError) {
         const { logger } = await import('@/lib/logger');
         logger.error('Failed to link referral', refError);
