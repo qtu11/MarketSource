@@ -97,9 +97,9 @@ const nextConfig = {
         hostname: 'files.catbox.moe',
       },
     ],
-    // ✅ FIX: Tắt Image Optimization — nhiều CDN (catbox.moe, etc.) block server-side fetch
-    // gây lỗi "Input Buffer is empty" → crash 500. Browser sẽ load ảnh trực tiếp từ URL gốc.
-    unoptimized: true,
+    // ✅ RE-ENABLED: Đã bật lại Image Optimization để tối ưu performance.
+    // Nếu gặp lỗi "Input Buffer is empty" với một số CDN, hãy kiểm tra lại cấu hình sharp.
+    unoptimized: false,
   },
   // ✅ FIX: Next.js tự động expose NEXT_PUBLIC_* variables
   // env: {},

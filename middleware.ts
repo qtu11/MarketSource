@@ -27,52 +27,28 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/logoqtusdev.png', request.url))
   }
 
-  // ✅ SECURITY: Bảo vệ /admin routes — chỉ cho admin
+  // ✅ SECURITY: Bảo vệ /admin routes — dùng NextAuth session duy nhất
   if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/login')) {
-    try {
-      const token = await getToken({
-        req: request,
-        secret: process.env.NEXTAUTH_SECRET,
-      })
+    const token = await getToken({
+      req: request,
+      secret: process.env.NEXTAUTH_SECRET,
+    })
 
-      if (!token) {
-        // Kiểm tra admin-token cookie (JWT login riêng của admin)
-        const adminToken = request.cookies.get('admin-token')?.value
-        if (!adminToken) {
-          const loginUrl = new URL('/admin/login', request.url)
-          loginUrl.searchParams.set('callbackUrl', pathname)
-          return NextResponse.redirect(loginUrl)
-        }
-      }
-    } catch (error) {
-      // Nếu token check lỗi → redirect về login
+    if (!token || token.role !== 'admin') {
       const loginUrl = new URL('/admin/login', request.url)
       loginUrl.searchParams.set('callbackUrl', pathname)
       return NextResponse.redirect(loginUrl)
     }
   }
 
-  // ✅ SECURITY: Bảo vệ /dashboard routes — user phải đăng nhập
-  if (pathname.startsWith('/dashboard')) {
-    try {
-      const token = await getToken({
-        req: request,
-        secret: process.env.NEXTAUTH_SECRET,
-      })
+  // ✅ SECURITY: Bảo vệ /dashboard routes — dùng NextAuth session
+  if (pathname.startsWith('/dashboard') || pathname === '/deposit' || pathname === '/withdraw') {
+    const token = await getToken({
+      req: request,
+      secret: process.env.NEXTAUTH_SECRET,
+    })
 
-      if (!token) {
-        // Kiểm tra auth-token cookie hoặc session-token
-        const authToken = request.cookies.get('auth-token')?.value
-        const sessionToken = request.cookies.get('next-auth.session-token')?.value
-        const secureSessionToken = request.cookies.get('__Secure-next-auth.session-token')?.value
-
-        if (!authToken && !sessionToken && !secureSessionToken) {
-          const loginUrl = new URL('/auth/login', request.url)
-          loginUrl.searchParams.set('callbackUrl', pathname)
-          return NextResponse.redirect(loginUrl)
-        }
-      }
-    } catch (error) {
+    if (!token) {
       const loginUrl = new URL('/auth/login', request.url)
       loginUrl.searchParams.set('callbackUrl', pathname)
       return NextResponse.redirect(loginUrl)

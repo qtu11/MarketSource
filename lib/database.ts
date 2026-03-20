@@ -704,33 +704,95 @@ export async function disableUserTwoFactor(userId: number): Promise<void> {
 }
 
 /**
- * Normalize user ID: Convert Firebase UID (string) to PostgreSQL ID (number)
- * Nếu userId là number, trả về ngay
- * Nếu userId là string (uid), tìm trong database hoặc tạo mới
+ * Normalize user ID: Convert Firebase UID (string), Email, or Username to PostgreSQL ID (number)
  */
 export async function normalizeUserId(
-  userId: string | number,
+  firebaseUidOrEmail: string | number,
   userEmail?: string
 ): Promise<number | null> {
   try {
-    // Nếu đã là number, trả về ngay
-    if (typeof userId === 'number') {
-      return userId;
-    }
+    if (typeof firebaseUidOrEmail === 'number') return firebaseUidOrEmail;
 
-    // Nếu là string (Firebase UID), tìm trong database qua email
-    if (userEmail) {
-      const dbUserId = await getUserIdByEmail(userEmail);
-      if (dbUserId) {
-        return dbUserId;
-      }
-    }
+    const instance = getPool();
+    // 1. Tìm theo firebase_uid, username hoặc email
+    const result = await instance.query(
+      "SELECT id FROM users WHERE (firebase_uid = $1 OR username = $1 OR email = $1 OR email = $2) AND deleted_at IS NULL",
+      [firebaseUidOrEmail, userEmail || firebaseUidOrEmail]
+    );
 
-    // Nếu không tìm thấy, return null (user chưa tồn tại trong PostgreSQL)
+    if (result.rows.length > 0) return Number(result.rows[0].id);
+
+    logger.warn('normalizeUserId: Failed to resolve database ID', { firebaseUidOrEmail, userEmail });
     return null;
   } catch (error) {
-    logger.error('Error normalizing user ID', error, { userId, userEmail });
+    logger.error('Error normalizing user ID', error, { firebaseUidOrEmail, userEmail });
     return null;
+  }
+}
+
+export async function updateUserPasswordHash(userId: number, passwordHash: string) {
+  try {
+    await pool.query("UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2", [
+      passwordHash,
+      userId,
+    ]);
+  } catch (error) {
+    logger.error("Error updating user password hash", error, { userId });
+    throw error;
+  }
+}
+
+// ============================================================
+// PASSWORD RESET FUNCTIONS
+// ============================================================
+
+export async function deletePasswordResetTokens(userId: number) {
+  try {
+    await pool.query("DELETE FROM password_resets WHERE user_id = $1", [userId]);
+  } catch (error) {
+    logger.error("Error deleting password reset tokens", error, { userId });
+    throw error;
+  }
+}
+
+export async function createPasswordResetTokenRecord(
+  userId: number,
+  token: string,
+  expiresAt: Date
+) {
+  try {
+    await pool.query(
+      "INSERT INTO password_resets (user_id, token, expires_at, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)",
+      [userId, token, expiresAt]
+    );
+  } catch (error) {
+    logger.error("Error creating password reset token record", error, { userId });
+    throw error;
+  }
+}
+
+export async function findValidPasswordResetToken(token: string) {
+  try {
+    const result = await pool.query(
+      `SELECT pr.*, u.email, u.id as user_id
+       FROM password_resets pr
+       JOIN users u ON pr.user_id = u.id
+       WHERE pr.token = $1 AND pr.expires_at > CURRENT_TIMESTAMP`,
+      [token]
+    );
+    return result.rows[0] || null;
+  } catch (error) {
+    logger.error("Error finding valid password reset token", error, { token });
+    throw error;
+  }
+}
+
+export async function consumePasswordResetToken(token: string) {
+  try {
+    await pool.query("DELETE FROM password_resets WHERE token = $1", [token]);
+  } catch (error) {
+    logger.error("Error consuming password reset token", error, { token });
+    throw error;
   }
 }
 
@@ -2094,147 +2156,435 @@ export async function createReview(reviewData: {
 }
 
 // ============================================================
-// NOTIFICATION FUNCTIONS
+// WISHLIST FUNCTIONS
 // ============================================================
 
-export async function createNotification(notificationData: {
-  userId: number;
-  type: string;
-  message: string;
-  isRead?: boolean;
+export async function getWishlist(userId: number) {
+  try {
+    const result = await pool.query(
+      `SELECT w.*, p.title, p.price, p.image_url, p.category
+       FROM wishlists w
+       JOIN products p ON w.product_id = p.id
+       WHERE w.user_id = $1
+       ORDER BY w.created_at DESC`,
+      [userId]
+    );
+    return result.rows;
+  } catch (error) {
+    logger.error("Error getting wishlist", error, { userId });
+    throw error;
+  }
+}
+
+export async function addToWishlist(userId: number, productId: number) {
+  try {
+    const result = await pool.query(
+      `INSERT INTO wishlists (user_id, product_id, created_at, updated_at)
+       VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) 
+       ON CONFLICT (user_id, product_id) DO NOTHING 
+       RETURNING id`,
+      [userId, productId]
+    );
+    return { id: result.rows[0]?.id || 0, userId, productId };
+  } catch (error) {
+    logger.error("Error adding to wishlist", error, { userId, productId });
+    throw error;
+  }
+}
+
+export async function removeFromWishlist(userId: number, productId: number) {
+  try {
+    await pool.query("DELETE FROM wishlists WHERE user_id = $1 AND product_id = $2", [
+      userId,
+      productId,
+    ]);
+    return { userId, productId };
+  } catch (error) {
+    logger.error("Error removing from wishlist", error, { userId, productId });
+    throw error;
+  }
+}
+
+export async function isInWishlist(userId: number, productId: number): Promise<boolean> {
+  try {
+    const result = await pool.query(
+      "SELECT id FROM wishlists WHERE user_id = $1 AND product_id = $2",
+      [userId, productId]
+    );
+    return result.rows.length > 0;
+  } catch (error) {
+    logger.error("Error checking wishlist status", error, { userId, productId });
+    return false;
+  }
+}
+
+// ============================================================
+// COUPON FUNCTIONS
+// ============================================================
+
+export async function getCoupons(filters?: {
+  isActive?: boolean
+  limit?: number
+  offset?: number
+}) {
+  try {
+    let sql = "SELECT * FROM coupons WHERE 1=1"
+    const params: any[] = []
+    let paramIndex = 1;
+
+    if (filters?.isActive !== undefined) {
+      sql += ` AND is_active = $${paramIndex}`
+      params.push(filters.isActive)
+      paramIndex++;
+    }
+
+    sql += " ORDER BY created_at DESC"
+
+    if (filters?.limit) {
+      sql += ` LIMIT $${paramIndex}`
+      params.push(filters.limit)
+      paramIndex++;
+    }
+    if (filters?.offset) {
+      sql += ` OFFSET $${paramIndex}`
+      params.push(filters.offset)
+    }
+
+    const result = await pool.query(sql, params);
+    return result.rows;
+  } catch (error) {
+    logger.error("Error getting coupons", error, { filters });
+    throw error;
+  }
+}
+
+export async function getCouponByCode(code: string) {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM coupons
+       WHERE code = $1 AND is_active = TRUE
+         AND (valid_from IS NULL OR valid_from <= CURRENT_TIMESTAMP)
+         AND (valid_until IS NULL OR valid_until >= CURRENT_TIMESTAMP)`,
+      [code]
+    );
+    return result.rows[0] || null;
+  } catch (error) {
+    logger.error("Error getting coupon by code", error, { code });
+    throw error;
+  }
+}
+
+export async function createCoupon(couponData: {
+  code: string
+  name?: string
+  title?: string
+  description?: string
+  discountType?: "percentage" | "fixed"
+  discountValue: number
+  minPurchaseAmount?: number
+  maxDiscountAmount?: number | null
+  usageLimit?: number | null
+  validFrom?: Date | null
+  validUntil?: Date | null
+  isActive?: boolean
 }) {
   try {
     const result = await pool.query(
-      `INSERT INTO notifications (user_id, type, message, is_read, created_at)
-       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-       RETURNING id, created_at`,
+      `INSERT INTO coupons (code, name, title, description, discount_type, discount_value,
+        min_purchase_amount, max_discount_amount, usage_limit, valid_from, valid_until, is_active,
+        created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) 
+       RETURNING *`,
       [
-        notificationData.userId,
-        notificationData.type,
-        notificationData.message,
-        notificationData.isRead || false,
+        couponData.code,
+        couponData.name ?? null,
+        couponData.title ?? null,
+        couponData.description ?? null,
+        couponData.discountType ?? "percentage",
+        couponData.discountValue,
+        couponData.minPurchaseAmount ?? 0,
+        couponData.maxDiscountAmount ?? null,
+        couponData.usageLimit ?? null,
+        couponData.validFrom ?? null,
+        couponData.validUntil ?? null,
+        couponData.isActive !== false,
       ]
     );
+    return result.rows[0];
+  } catch (error) {
+    logger.error("Error creating coupon", error, { couponData });
+    throw error;
+  }
+}
 
+export async function applyCoupon(userId: number, couponCode: string) {
+  const client: PoolClient = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    const couponResult = await client.query(
+      `SELECT * FROM coupons
+       WHERE code = $1 AND is_active = TRUE
+         AND (valid_from IS NULL OR valid_from <= CURRENT_TIMESTAMP)
+         AND (valid_until IS NULL OR valid_until >= CURRENT_TIMESTAMP)
+       FOR UPDATE`,
+      [couponCode]
+    );
+
+    if (couponResult.rows.length === 0) {
+      throw new Error("Mã coupon không hợp lệ hoặc đã hết hạn");
+    }
+
+    const coupon = couponResult.rows[0];
+
+    if (coupon.usage_limit !== null) {
+      const usedResult = await client.query(
+        "SELECT COUNT(*) as cnt FROM user_coupons WHERE coupon_id = $1",
+        [coupon.id]
+      );
+      if (parseInt(usedResult.rows[0].cnt) >= coupon.usage_limit) {
+        throw new Error("Mã coupon đã hết lượt sử dụng");
+      }
+    }
+
+    const existingResult = await client.query(
+      "SELECT id FROM user_coupons WHERE user_id = $1 AND coupon_id = $2",
+      [userId, coupon.id]
+    );
+    if (existingResult.rows.length > 0) {
+      throw new Error("Bạn đã sử dụng mã coupon này rồi");
+    }
+
+    await client.query(
+      "INSERT INTO user_coupons (user_id, coupon_id, used_at, created_at) VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+      [userId, coupon.id]
+    );
+
+    await client.query('COMMIT');
     return {
-      id: result.rows[0].id,
-      createdAt: result.rows[0].created_at,
+      couponId: coupon.id,
+      code: coupon.code,
+      discountType: coupon.discount_type,
+      discountValue: parseFloat(coupon.discount_value),
+      maxDiscountAmount: coupon.max_discount_amount ? parseFloat(coupon.max_discount_amount) : null,
     };
   } catch (error) {
-    logger.error('Error creating notification', error, {
-      userId: notificationData.userId,
-      type: notificationData.type
-    });
+    await client.query('ROLLBACK');
+    logger.error("Error applying coupon", error, { userId, couponCode });
     throw error;
+  } finally {
+    client.release();
   }
 }
 
-export async function getNotifications(userId?: number, isRead?: boolean) {
+// ============================================================
+// REFERRAL FUNCTIONS
+// ============================================================
+
+export async function getReferrals(referrerId: number) {
   try {
-    let query = 'SELECT * FROM notifications WHERE 1=1';
-    const params: any[] = [];
-    let paramIndex = 1;
-
-    if (userId) {
-      query += ` AND user_id = $${paramIndex}`;
-      params.push(userId);
-      paramIndex++;
-    }
-
-    if (isRead !== undefined) {
-      query += ` AND is_read = $${paramIndex}`;
-      params.push(isRead);
-      paramIndex++;
-    }
-
-    query += ' ORDER BY created_at DESC';
-
-    const result = await pool.query(query, params);
+    const result = await pool.query(
+      `SELECT r.*, u.username, u.email, u.name, u.avatar_url
+       FROM referrals r
+       JOIN users u ON r.referred_id = u.id
+       WHERE r.referrer_id = $1
+       ORDER BY r.created_at DESC`,
+      [referrerId]
+    );
     return result.rows;
   } catch (error) {
-    logger.error('Error getting notifications', error, { userId, isRead });
+    logger.error("Error getting referrals", error, { referrerId });
     throw error;
   }
 }
 
-export async function markNotificationAsRead(notificationId: number, userId: number) {
+export async function createReferral(referrerId: number, referredId: number) {
+  if (Number(referrerId) === Number(referredId)) {
+    throw new Error("Bạn không thể tự giới thiệu chính mình");
+  }
   try {
     const result = await pool.query(
-      'UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2 RETURNING id',
-      [notificationId, userId]
+      "INSERT INTO referrals (referrer_id, referred_id, status, created_at) VALUES ($1, $2, 'pending', CURRENT_TIMESTAMP) RETURNING id",
+      [referrerId, referredId]
     );
-    return result.rows[0] || null;
+    return { id: result.rows[0].id, referrerId, referredId };
   } catch (error) {
-    logger.error('Error marking notification as read', error, { notificationId, userId });
+    logger.error("Error creating referral", error, { referrerId, referredId });
     throw error;
   }
 }
 
 // ============================================================
-// PASSWORD RESET FUNCTIONS
+// ANALYTICS & APP SETTINGS
 // ============================================================
 
-export async function deletePasswordResetTokens(userId: number) {
-  try {
-    await pool.query('DELETE FROM password_resets WHERE user_id = $1', [userId]);
-  } catch (error) {
-    logger.error('Error deleting password reset tokens', error, { userId });
-    throw error;
-  }
-}
-
-export async function createPasswordResetTokenRecord(
-  userId: number,
-  token: string,
-  expiresAt: Date
-) {
-  try {
-    await pool.query(
-      `INSERT INTO password_resets (user_id, token, expires_at, created_at)
-       VALUES ($1, $2, $3, CURRENT_TIMESTAMP)`,
-      [userId, token, expiresAt]
-    );
-  } catch (error) {
-    logger.error('Error creating password reset token', error, { userId });
-    throw error;
-  }
-}
-
-export async function findValidPasswordResetToken(token: string) {
+export async function trackAnalyticsEvent(eventData: {
+  userId?: number | null
+  eventType: string
+  eventData?: Record<string, any> | null
+  ipAddress?: string | null
+  userAgent?: string | null
+}) {
   try {
     const result = await pool.query(
-      `SELECT pr.*, u.email, u.id as user_id
-       FROM password_resets pr
-       JOIN users u ON pr.user_id = u.id
-       WHERE pr.token = $1
-         AND pr.expires_at > NOW()`,
-      [token]
+      `INSERT INTO analytics_events (user_id, event_type, event_data, ip_address, user_agent, created_at)
+       VALUES ($1, $2, $3::jsonb, $4, $5, CURRENT_TIMESTAMP) RETURNING id`,
+      [
+        eventData.userId ?? null,
+        eventData.eventType,
+        eventData.eventData || null,
+        eventData.ipAddress ?? null,
+        eventData.userAgent ?? null,
+      ]
+    );
+    return { id: result.rows[0].id };
+  } catch (error) {
+    logger.error("Error tracking analytics event", error, { eventData });
+    return null;
+  }
+}
+
+export async function createAppSetting(settingData: {
+  key: string
+  value: string
+  description?: string
+}) {
+  try {
+    const result = await pool.query(
+      "INSERT INTO app_settings (setting_key, setting_value, description, created_at, updated_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id",
+      [settingData.key, settingData.value, settingData.description || null]
+    );
+    return { id: result.rows[0].id };
+  } catch (error) {
+    logger.error("Error creating app setting", error, { settingData });
+    return null;
+  }
+}
+
+export async function trackProductView(productId: number, ipAddress?: string) {
+  try {
+    await pool.query(
+      `INSERT INTO product_views (product_id, ip_address, viewed_at)
+       VALUES ($1, $2, CURRENT_TIMESTAMP)`,
+      [productId, ipAddress || null]
+    );
+  } catch (error) {
+    logger.error("Error tracking product view", error, { productId });
+  }
+}
+
+export async function getProductViewCount(productId: number): Promise<number> {
+  try {
+    const result = await pool.query(
+      "SELECT COUNT(*) as count FROM product_views WHERE product_id = $1",
+      [productId]
+    );
+    return parseInt(result.rows[0].count);
+  } catch (error) {
+    logger.error("Error getting product view count", error, { productId });
+    return 0;
+  }
+}
+
+// ============================================================
+// BUNDLE FUNCTIONS
+// ============================================================
+
+export async function getBundles() {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM bundles WHERE is_active = TRUE ORDER BY created_at DESC"
+    );
+    return result.rows;
+  } catch (error) {
+    logger.error("Error getting bundles", error);
+    throw error;
+  }
+}
+
+export async function getBundleById(bundleId: number) {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM bundles WHERE id = $1",
+      [bundleId]
     );
     return result.rows[0] || null;
   } catch (error) {
-    logger.error('Error finding password reset token', error, { token });
+    logger.error("Error getting bundle by ID", error, { bundleId });
     throw error;
   }
 }
 
-export async function consumePasswordResetToken(token: string) {
-  try {
-    await pool.query('DELETE FROM password_resets WHERE token = $1', [token]);
-  } catch (error) {
-    logger.error('Error consuming password reset token', error, { token });
-    throw error;
-  }
-}
+// ============================================================
+// BANNER FUNCTIONS
+// ============================================================
 
-export async function updateUserPasswordHash(userId: number, passwordHash: string) {
+export async function createBanner(bannerData: {
+  title: string
+  imageUrl: string
+  link?: string
+  isActive?: boolean
+}) {
   try {
-    await pool.query(
-      'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [passwordHash, userId]
+    const result = await pool.query(
+      `INSERT INTO banners (title, image_url, link, is_active, created_at)
+       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING id`,
+      [
+        bannerData.title,
+        bannerData.imageUrl,
+        bannerData.link || null,
+        bannerData.isActive !== false,
+      ]
     );
+    return { id: result.rows[0].id };
   } catch (error) {
-    logger.error('Error updating user password', error, { userId });
+    logger.error("Error creating banner", error, { bannerData });
     throw error;
   }
 }
 
+// ============================================================
+// ADMIN ACTION FUNCTIONS
+// ============================================================
+
+export async function createAdminAction(actionData: {
+  adminId: number
+  action: string
+  targetType?: string
+  targetId?: string
+  details?: Record<string, any>
+}) {
+  try {
+    const result = await pool.query(
+      `INSERT INTO admin_actions (admin_id, action, target_type, target_id, details, created_at)
+       VALUES ($1, $2, $3, $4, $5::jsonb, CURRENT_TIMESTAMP) RETURNING id`,
+      [
+        actionData.adminId,
+        actionData.action,
+        actionData.targetType || null,
+        actionData.targetId || null,
+        actionData.details || null,
+      ]
+    );
+    return { id: result.rows[0].id };
+  } catch (error) {
+    logger.error("Error creating admin action", error, { actionData });
+    throw error;
+  }
+}
+
+export async function getAdminActions(limit: number = 50) {
+  try {
+    const result = await pool.query(
+      `SELECT aa.*, u.username as admin_name, u.email as admin_email
+       FROM admin_actions aa
+       JOIN users u ON aa.admin_id = u.id
+       ORDER BY aa.created_at DESC LIMIT $1`,
+      [limit]
+    );
+    return result.rows;
+  } catch (error) {
+    logger.error("Error getting admin actions", error);
+    throw error;
+  }
+}
