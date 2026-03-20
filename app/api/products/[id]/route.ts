@@ -44,6 +44,19 @@ export async function GET(
       }, { status: 404 });
     }
 
+    // ✅ SECURITY FIX: Sản phẩm inactive chỉ admin mới xem được
+    const isInactive = product.is_active === false || product.is_active === 0;
+    if (isInactive) {
+      try {
+        await requireAdmin(request);
+      } catch {
+        return NextResponse.json({
+          success: false,
+          error: 'Product not found'
+        }, { status: 404 });
+      }
+    }
+
     return NextResponse.json({
       success: true,
       product,

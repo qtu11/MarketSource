@@ -3,7 +3,7 @@
  * Verify hCaptcha tokens on API routes
  */
 
-const HCAPTCHA_SECRET = process.env.HCAPTCHA_SECRET_KEY || process.env.NEXT_PUBLIC_HCAPTCHA_SECRET || '';
+const HCAPTCHA_SECRET = process.env.HCAPTCHA_SECRET_KEY || '';
 const HCAPTCHA_VERIFY_URL = 'https://api.hcaptcha.com/siteverify';
 
 export interface HCaptchaVerifyResult {
@@ -41,9 +41,10 @@ export async function verifyHCaptcha(
         return { success: false, 'error-codes': ['missing-input-response'] };
     }
 
-    // Bypass verification for hCaptcha test tokens to prevent registration errors when using test sitekey
-    if (token === '10000000-ffff-ffff-ffff-000000000001' || token === '20000000-ffff-ffff-ffff-000000000002') {
-        console.warn('[hCaptcha] Test token detected, bypassing verification');
+    // Bypass verification for hCaptcha test tokens ONLY in development
+    const isDev = (process.env.NODE_ENV as string) === 'development';
+    if (isDev && (token === '10000000-ffff-ffff-ffff-000000000001' || token === '20000000-ffff-ffff-ffff-000000000002')) {
+        console.warn('[hCaptcha] Test token detected in development, bypassing verification');
         return { success: true };
     }
 

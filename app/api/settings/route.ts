@@ -6,88 +6,89 @@ import { checkRateLimitAndRespond } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 
-// Ensure the table exists (Cross DB compatibility)
-async function ensureSettingsTable() {
-    try {
-        const isPostgres = process.env.DATABASE_URL || !process.env.MYSQL_HOST;
-        if (isPostgres) {
-            await query(`
-                CREATE TABLE IF NOT EXISTS settings (
-                    id SERIAL PRIMARY KEY,
-                    "key" VARCHAR(255) UNIQUE NOT NULL,
-                    value TEXT,
-                    type VARCHAR(255),
-                    group_name VARCHAR(255),
-                    label VARCHAR(255),
-                    description TEXT,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            `);
-        } else {
-            await query(`
-                CREATE TABLE IF NOT EXISTS settings (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    \`key\` VARCHAR(255) UNIQUE NOT NULL,
-                    value TEXT,
-                    type VARCHAR(255),
-                    group_name VARCHAR(255),
-                    label VARCHAR(255),
-                    description TEXT,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-            `);
-        }
-        // Auto-migrate new Product columns
-        const addColumnsSql = isPostgres
-            ? `
-                ALTER TABLE products 
-                ADD COLUMN IF NOT EXISTS detailed_description TEXT,
-                ADD COLUMN IF NOT EXISTS image_urls TEXT;
-              `
-            : `
-                ALTER TABLE products 
-                ADD COLUMN detailed_description TEXT,
-                ADD COLUMN image_urls TEXT;
-              `;
+// ✅ SECURITY FIX: Allowlist — chỉ những key này được trả về cho public GET (không cần auth)
+const PUBLIC_SETTINGS_KEYS = new Set([
+  // Branding
+  'siteName', 'siteTagline', 'logoUrl', 'faviconUrl',
+  // Colors
+  'primaryColor', 'secondaryColor', 'accentColor', 'backgroundColor',
+  'surfaceColor', 'textColor', 'mutedTextColor', 'borderColor',
+  'successColor', 'warningColor', 'errorColor',
+  // Typography
+  'headingFont', 'bodyFont', 'baseFontSize', 'headingWeight',
+  // Hero
+  'heroTitle', 'heroSubtitle', 'heroButtonText', 'heroButtonLink',
+  'heroBgType', 'heroBgColor', 'heroBgImage', 'heroOverlayOpacity',
+  // Layout
+  'layoutMode', 'sidebarPosition', 'containerWidth', 'navStyle',
+  'cardStyle', 'borderRadius',
+  // Footer & Contact (public info)
+  'contactEmail', 'contactPhone', 'contactAddress',
+  'footerText', 'footerStyle',
+  // Social Links
+  'facebookUrl', 'twitterUrl', 'instagramUrl', 'youtubeUrl',
+  'telegramUrl', 'githubUrl', 'tiktokUrl',
+  // SEO
+  'metaTitle', 'metaDescription', 'metaKeywords', 'ogImage',
+  // Misc public
+  'maintenanceMode', 'maintenanceMessage',
+  'hcaptchaSiteKey',
+])
 
-        try {
-            if (isPostgres) {
-                await query(addColumnsSql);
-            } else {
-                // MySQL doesn't natively support ADD COLUMN IF NOT EXISTS easily in older versions, 
-                // but we can try-catch it to ignore Duplicate Column errors.
-                await query(addColumnsSql).catch(e => {
-                    if (e.code !== 'ER_DUP_FIELDNAME') throw e;
-                });
-            }
-        } catch (colError) {
-            logger.warn('Failed to add new product columns (might already exist)', { colError });
-        }
-
-    } catch (error) {
-        logger.error('Error creating settings table', { error })
-    }
-}
+// ✅ FIX: Schema managed via migration, remove CREATE TABLE runtime
 
 // Lấy tất cả cài đặt
 export async function GET(request: NextRequest) {
     try {
-        // Cho phép public access để load thông tin cho header/footer/hero
+        const rows = await query<any>('SELECT "key", value FROM settings')
 
-        const rateLimitResponse = await checkRateLimitAndRespond(request, 100, 60, 'get-settings')
-        if (rateLimitResponse) return rateLimitResponse
-
-        await ensureSettingsTable()
-        const rows = await query<any>('SELECT \`key\`, value FROM settings')
+        // ✅ SECURITY FIX: Cho phép Admin xem toàn bộ settings
+        // Khách chỉ được xem PUBLIC_SETTINGS_KEYS
+        let isAdmin = false
+        try {
+            const { requireAdmin } = await import('@/lib/api-auth')
+            await requireAdmin(request)
+            isAdmin = true
+        } catch {
+            isAdmin = false
+        }
 
         const settingsObj: Record<string, string> = {}
         if (Array.isArray(rows)) {
             rows.forEach((row: any) => {
-                settingsObj[row.key] = row.value
+                if (isAdmin || PUBLIC_SETTINGS_KEYS.has(row.key)) {
+                    settingsObj[row.key] = row.value
+                }
             })
         }
 
-        return NextResponse.json({ success: true, settings: settingsObj })
+        // ✅ SECURITY FIX: Trả về trạng thái cấu hình (bool) thay vì giá trị thật cho các secret keys nhạy cảm
+        const sensitiveKeys = [
+            'telegramBotToken', 'telegramChatId', 'whatsappNumber', 
+            'geminiApiKey', 'hcaptchaSecret', 'hcaptchaSiteKey',
+            'smtpHost', 'smtpUser', 'smtpPass'
+        ]
+        
+        const configStatus: Record<string, boolean> = {}
+        sensitiveKeys.forEach(key => {
+            // Check in DB or ENV
+            const inDb = settingsObj[key] && settingsObj[key].length > 0;
+            const envKey = key.replace(/[A-Z]/g, letter => `_${letter.toUpperCase()}`).toUpperCase();
+            const inEnv = process.env[envKey] || process.env[`NEXT_PUBLIC_${envKey}`];
+            
+            configStatus[key] = !!(inDb || inEnv);
+            
+            // Nếu không phải admin, xoá hẳn value nhạy cảm khỏi settingsObj
+            if (!isAdmin && sensitiveKeys.includes(key)) {
+               delete settingsObj[key];
+            }
+        })
+
+        return NextResponse.json({ 
+            success: true, 
+            settings: settingsObj,
+            configStatus: isAdmin ? configStatus : {} // ✅ Chỉ trả configStatus nếu là admin
+        })
     } catch (error: any) {
         logger.error('Error fetching settings', error)
         const isUnauthorized = error.message?.includes('Unauthorized') || error.message?.includes('auth');
@@ -115,30 +116,27 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'Dữ liệu không hợp lệ. Cần object "tokens"' }, { status: 400 })
         }
 
-        await ensureSettingsTable()
+        // Danh sách các key nhạy cảm không được phép ghi đè bằng chuỗi rỗng (coi như không đổi)
+        const sensitiveKeys = ['telegramBotToken', 'geminiApiKey', 'hcaptchaSecret', 'smtpPass', 'twilioAuthToken', 'whatsappNumber']
 
         // Lưu từng token vào bảng settings
         for (const [key, value] of Object.entries(tokens)) {
             if (typeof key === 'string' && value !== undefined) {
                 const valStr = typeof value === 'string' ? value : JSON.stringify(value)
-
-                // ✅ BUG #8 FIX: Dùng đúng syntax cho từng database engine
-                const isPostgres = process.env.DATABASE_URL || !process.env.MYSQL_HOST;
-                if (isPostgres) {
-                    await query(
-                        `INSERT INTO settings ("key", value) 
-                         VALUES (?, ?) 
-                         ON CONFLICT ("key") DO UPDATE SET value = EXCLUDED.value`,
-                        [key, valStr]
-                    )
-                } else {
-                    await query(
-                        `INSERT INTO settings (\`key\`, value) 
-                         VALUES (?, ?) 
-                         ON DUPLICATE KEY UPDATE value = ?`,
-                        [key, valStr, valStr]
-                    )
+                
+                // ✅ UX FIX: Nếu là key nhạy cảm và value là rỗng, bỏ qua (không ghi đè để tránh mất config cũ)
+                if (sensitiveKeys.includes(key) && valStr.trim() === '') {
+                    continue
                 }
+
+                // ✅ BRIDGE: Dùng syntax ON DUPLICATE KEY UPDATE (MySQL) 
+                // Bridge PostgreSQL sẽ tự động chuyển sang ON CONFLICT ("key") DO UPDATE SET
+                await query(
+                    `INSERT INTO settings (\`key\`, value) 
+                     VALUES (?, ?) 
+                     ON DUPLICATE KEY UPDATE value = ?`,
+                    [key, valStr, valStr]
+                )
             }
         }
 

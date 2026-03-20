@@ -1,111 +1,70 @@
-// lib/database-mysql.ts
-// Layer kết nối MySQL + một số hàm core (user, deposit, withdrawal, purchase, product).
-// Env yêu cầu:
-// MYSQL_HOST, MYSQL_PORT, MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD
-
-import mysql from "mysql2/promise"
+// ✅ CORE: Chốt PostgreSQL/Supabase làm nguồn dữ liệu duy nhất
+// Không còn sử dụng mysql2 driver trực tiếp, chuyển 100% sang PostgreSQL Bridge
 import { logger } from "./logger"
 import * as pg from "./database"
 
-const isServerless =
-  process.env.VERCEL === "1" ||
-  process.env.AWS_LAMBDA_FUNCTION_NAME ||
-  process.env.NETLIFY === "true"
+// Luôn sử dụng bridge để đồng bộ hóa logic tuyệt đối
+const usePostgresBridge = true;
 
-// ✅ BRIDGE MODE: Chuyển hướng sang PostgreSQL nếu thiếu MySQL config
-const usePostgresBridge = !process.env.MYSQL_HOST;
-
-type Pool = ReturnType<typeof mysql.createPool>
-type PoolConnection = Awaited<ReturnType<Pool['getConnection']>>
-
-// (Removed duplicate let pool definition to fix redeclaration error)
-
-function createPool(): Pool {
-  if (usePostgresBridge) {
-    logger.info("MySQL host missing, using PostgreSQL bridge mode");
-
-    // Tạo dummy pool proxy để hỗ trợ execute và query
-    const bridgePool = {
-      query: async (sql: string, params: any[] = []) => {
-        const pgSql = convertToPostgresSql(sql);
-        const rows = await pg.query(pgSql, params);
-        return [rows, []]; // Trả về dạng [rows, fields]
-      },
-      execute: async (sql: string, params: any[] = []) => {
-        const pgSql = convertToPostgresSql(sql);
-        const rows = await pg.query(pgSql, params);
-
-        // Giả lập result cho INSERT/UPDATE/DELETE
-        const result: any = {
-          insertId: rows.length > 0 ? (rows[0] as any).id || 0 : 0,
-          affectedRows: rows.length,
-          warningStatus: 0,
-        };
-
-        return [result, []];
-      },
-      getConnection: async () => {
-        return {
-          query: bridgePool.query,
-          execute: bridgePool.execute,
-          beginTransaction: async () => { },
-          commit: async () => { },
-          rollback: async () => { },
-          release: () => { },
-        } as any;
-      },
-      end: async () => { },
-    } as any;
-
-    return bridgePool;
-  }
-
-  if (!process.env.MYSQL_DATABASE) throw new Error("MYSQL_DATABASE is required")
-  if (!process.env.MYSQL_USER) throw new Error("MYSQL_USER is required")
-  if (!process.env.MYSQL_PASSWORD) throw new Error("MYSQL_PASSWORD is required")
-
-  const connectionLimit = isServerless ? 1 : 10
-
-  const newPool = mysql.createPool({
-    host: process.env.MYSQL_HOST,
-    port: Number(process.env.MYSQL_PORT || 3306),
-    database: process.env.MYSQL_DATABASE,
-    user: process.env.MYSQL_USER,
-    password: process.env.MYSQL_PASSWORD,
-    connectionLimit,
-    waitForConnections: true,
-    queueLimit: 0,
-    // ✅ BUG #44: Thêm timeout cấu hình pool
-    connectTimeout: 10000, // 10s
-    idleTimeout: 60000,    // 60s
-    enableKeepAlive: true,
-    keepAliveInitialDelay: 0,
-  })
-
-  newPool
-    .query("SELECT 1")
-    .then(() => logger.info("MySQL connection OK"))
-    .catch((err: any) => logger.error("MySQL connection test failed", err))
-
-  return newPool
+// Mẫu Pool giả lập để tương thích với code cũ dùng mysql2
+export interface FakePool {
+  query: (sql: string, params?: any[]) => Promise<[any, any]>;
+  execute: (sql: string, params?: any[]) => Promise<[any, any]>;
+  getConnection: () => Promise<any>;
+  end: () => Promise<void>;
 }
 
-// ✅ FIX: Lưu trữ connection pool vào biến globalThis để tránh rò rỉ kết nối khi Hot-Reload
-const globalForMysql = global as unknown as {
-  mysqlPool: Pool | null;
-};
+function createPool(): FakePool {
+  logger.info("Unified Database Mode: Using PostgreSQL as the sole data source");
 
-export let pool: Pool | null = globalForMysql.mysqlPool || null;
+  // Bridge Pool proxy để hỗ trợ các hàm query/execute kiểu MySQL
+  const bridgePool: FakePool = {
+    query: async (sql: string, params: any[] = []) => {
+      const pgSql = convertToPostgresSql(sql);
+      const rows = await pg.query(pgSql, params);
+      return [rows, []]; // Trả về [rows, fields]
+    },
+    execute: async (sql: string, params: any[] = []) => {
+      const pgSql = convertToPostgresSql(sql);
+      const rows = await pg.query(pgSql, params);
 
-export function getPool(): Pool {
-  if (!pool) {
-    pool = createPool()
-    if (process.env.NODE_ENV !== 'production') {
-      globalForMysql.mysqlPool = pool;
-    }
-  }
-  return pool
+      // Giả lập OkPacket cho INSERT/UPDATE/DELETE
+      const result: any = {
+        insertId: rows.length > 0 ? (rows[0] as any).id || 0 : 0,
+        affectedRows: rows.length,
+        warningStatus: 0,
+      };
+
+      return [result, []];
+    },
+    getConnection: async () => {
+      return {
+        query: bridgePool.query,
+        execute: bridgePool.execute,
+        beginTransaction: async () => { }, 
+        commit: async () => { },
+        rollback: async () => { },
+        release: () => { },
+      } as any;
+    },
+    end: async () => { },
+  };
+
+  return bridgePool;
 }
+
+// Singleton pool
+let poolInstance: FakePool | null = null;
+
+export function getPool(): FakePool {
+  if (!poolInstance) {
+    poolInstance = createPool();
+  }
+  return poolInstance;
+}
+
+// Export biến pool để tương thích với import { pool } từ các file khác
+export const pool = getPool();
 
 function matchesToUniqueConstraint(match: string): string {
   // Convert ", UNIQUE KEY name (col1, col2)" -> ", UNIQUE (col1, col2)"
@@ -145,7 +104,8 @@ function convertToPostgresSql(sql: string): string {
     else if (['reviews'].includes(tableName)) conflictCol = 'user_id, product_id';
     else if (['product_ratings'].includes(tableName)) conflictCol = 'product_id';
     else if (['wishlists'].includes(tableName)) conflictCol = 'user_id, product_id';
-    else if (['settings', 'app_settings'].includes(tableName)) conflictCol = 'setting_key';
+    else if (tableName === 'settings') conflictCol = '"key"';
+    else if (tableName === 'app_settings') conflictCol = 'setting_key';
     else if (['user_coupons'].includes(tableName)) conflictCol = 'user_id, coupon_id';
     else if (['review_votes'].includes(tableName)) conflictCol = 'review_id, user_id';
     else if (['deposits'].includes(tableName)) conflictCol = 'transaction_id';
@@ -162,6 +122,11 @@ function convertToPostgresSql(sql: string): string {
 
   // 3. Convert MySQL types and table options to PostgreSQL
   converted = converted.replace(/AUTO_INCREMENT/gi, 'GENERATED BY DEFAULT AS IDENTITY');
+  
+  // ✅ FIX: Chuyển đổi backtick (MySQL) sang double quote (PostgreSQL) cho các column/table name
+  // Tránh lỗi với các từ khoá dự phòng như "key"
+  converted = converted.replace(/`([^`]+)`/g, '"$1"');
+  
   converted = converted.replace(/BIGINT\s+GENERATED BY DEFAULT AS IDENTITY/gi, 'BIGSERIAL');
   converted = converted.replace(/INT\s+GENERATED BY DEFAULT AS IDENTITY/gi, 'SERIAL');
   converted = converted.replace(/DATETIME/gi, 'TIMESTAMP WITH TIME ZONE');
@@ -194,109 +159,116 @@ function convertToPostgresSql(sql: string): string {
     converted = converted.trim() + ' RETURNING id';
   }
 
+  // ✅ BRIDGE FIX: Auto-add RETURNING * cho UPDATE/DELETE để đếm affected rows
+  const upperConverted = converted.trim().toUpperCase();
+  if ((upperConverted.startsWith('UPDATE') || upperConverted.startsWith('DELETE')) && !upperConverted.includes('RETURNING')) {
+    converted = converted.trim() + ' RETURNING *';
+  }
+
   return converted;
 }
 
+// ✅ Mẫu PoolConnection giả lập để tương thích với giao diện mysql2
+export interface FakeConnection {
+  query: (sql: string, params?: any[]) => Promise<[any, any]>;
+  execute: (sql: string, params?: any[]) => Promise<[any, any]>;
+  beginTransaction: () => Promise<void>;
+  commit: () => Promise<void>;
+  rollback: () => Promise<void>;
+  release: () => void;
+}
+
 export async function query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
-  if (usePostgresBridge) {
-    try {
-      const pgSql = convertToPostgresSql(sql);
-      const result = await pg.query(pgSql, params);
-
-      // ✅ FIX: Nếu là INSERT, bọc kết quả để trả về insertId tương tự MySQL
-      if (sql.trim().toUpperCase().startsWith('INSERT INTO')) {
-        const rows = result as any[];
-        const insertId = rows.length > 0 ? rows[0].id || 0 : 0;
-        const affectedRows = rows.length; // PostreSQL bridge returns rows, use length as affectedRows approximation
-        const fakeResult: any = {
-          insertId,
-          affectedRows,
-          warningStatus: 0,
-        };
-        // MySQL .query thường trả về kết quả này thay vì rows array cho INSERT
-        return fakeResult as any;
-      }
-
-      return result as T[];
-    } catch (err: any) {
-      logger.error("Bridge PostgreSQL: query error", err, { sql: sql.substring(0, 100) });
-      throw err;
-    }
-  }
-
   try {
-    const [rows] = await getPool().query(sql, params)
-    return rows as T[]
+    const pgSql = convertToPostgresSql(sql);
+    const result = await pg.query(pgSql, params);
+
+    // ✅ FIX: Nếu là INSERT, bọc kết quả để trả về insertId tương tự MySQL (OkPacket)
+    if (sql.trim().toUpperCase().startsWith('INSERT INTO')) {
+      const rows = result as any[];
+      const insertId = rows.length > 0 ? rows[0].id || 0 : 0;
+      const affectedRows = rows.length;
+      const fakeResult: any = {
+        insertId,
+        affectedRows,
+        warningStatus: 0,
+      };
+      return fakeResult as any;
+    }
+
+    // ✅ BRIDGE FIX: UPDATE/DELETE cũng cần trả affectedRows đúng
+    const sqlUpper = sql.trim().toUpperCase();
+    if (sqlUpper.startsWith('UPDATE') || sqlUpper.startsWith('DELETE')) {
+      const rows = result as any[];
+      const fakeResult: any = {
+        affectedRows: Array.isArray(rows) ? rows.length : 0,
+        warningStatus: 0,
+      };
+      return fakeResult as any;
+    }
+
+    return result as T[];
   } catch (err: any) {
-    logger.error("MySQL: query error", err, { sql: sql.substring(0, 100) })
-    throw err
+    logger.error("Bridge PostgreSQL Unified: query error", err, { sql: sql.substring(0, 100) });
+    throw err;
   }
 }
 
 export async function queryOne<T = any>(sql: string, params: any[] = []): Promise<T | null> {
   const rows = await query<T>(sql, params)
+  // query() có thể trả về OkPacket cho INSERT/UPDATE/DELETE, cần check Array
+  if (!Array.isArray(rows)) return null;
   return rows[0] ?? null
 }
 
-export async function withTransaction<T>(fn: (conn: PoolConnection) => Promise<T>): Promise<T> {
-  if (usePostgresBridge) {
-    // ✅ FIX: Sử dụng connection thật từ Postgres pool để bọc Transaction an toàn ACID
-    const client = await pg.getPool().connect();
-    try {
-      await client.query('BEGIN');
-      const dummyConn = {
-        query: async (sql: string, params: any[] = []) => {
-          const pgSql = convertToPostgresSql(sql);
-          const result = await client.query(pgSql, params);
-          return [result.rows, []]; // Giả lập trả về [rows, fields]
-        },
-        execute: async (sql: string, params: any[] = []) => {
-          const pgSql = convertToPostgresSql(sql);
-          const result = await client.query(pgSql, params);
-          const fakeResult: any = {
-            insertId: result.rows.length > 0 ? (result.rows[0] as any).id || 0 : 0,
-            affectedRows: result.rowCount || 0,
-            warningStatus: 0,
-          };
-          return [fakeResult, []];
-        },
-        beginTransaction: async () => { },
-        commit: async () => { },
-        rollback: async () => { },
-        release: () => { },
-      } as any;
-
-      const result = await fn(dummyConn);
-      await client.query('COMMIT');
-      return result;
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
-  }
-
-  const conn = await getPool().getConnection()
+export async function withTransaction<T>(fn: (conn: FakeConnection) => Promise<T>): Promise<T> {
+  // ✅ FIX: Sử dụng connection thật từ Postgres pool để bọc Transaction an toàn ACID
+  const client = await pg.getPool().connect();
   try {
-    await conn.beginTransaction()
-    const result = await fn(conn)
-    await conn.commit()
-    return result
+    await client.query('BEGIN');
+    const dummyConn: FakeConnection = {
+      query: async (sql: string, params: any[] = []) => {
+        const pgSql = convertToPostgresSql(sql);
+        const result = await client.query(pgSql, params);
+        return [result.rows, []]; // Giả lập trả về [rows, fields]
+      },
+      execute: async (sql: string, params: any[] = []) => {
+        const pgSql = convertToPostgresSql(sql);
+        const result = await client.query(pgSql, params);
+        const fakeResult: any = {
+          insertId: result.rows.length > 0 ? (result.rows[0] as any).id || 0 : 0,
+          affectedRows: result.rowCount || 0,
+          warningStatus: 0,
+        };
+        return [fakeResult, []];
+      },
+      beginTransaction: async () => { },
+      commit: async () => { },
+      rollback: async () => { },
+      release: () => { },
+    };
+
+    const result = await fn(dummyConn);
+    await client.query('COMMIT');
+    return result;
   } catch (e) {
-    await conn.rollback()
-    throw e
+    await client.query('ROLLBACK');
+    throw e;
   } finally {
-    conn.release()
+    client.release();
   }
 }
 
 
 // ===================== USER =====================
 
-export async function getUserByIdMySQL(userId: number) {
+export async function getUserByIdMySQL(userId: string | number) {
   try {
-    return await queryOne<any>("SELECT * FROM users WHERE id = ? AND deleted_at IS NULL", [userId])
+    // ✅ SECURITY FIX: Không dùng SELECT *, chỉ lấy safe columns
+    return await queryOne<any>(
+      "SELECT id, email, name, username, avatar_url, balance, role, created_at, updated_at FROM users WHERE id = ? AND deleted_at IS NULL",
+      [userId]
+    )
   } catch (err) {
     logger.error("MySQL: getUserById error", err, { userId })
     throw err
@@ -305,7 +277,11 @@ export async function getUserByIdMySQL(userId: number) {
 
 export async function getUserByEmailMySQL(email: string) {
   try {
-    return await queryOne<any>("SELECT * FROM users WHERE email = ? AND deleted_at IS NULL", [email])
+    // ✅ SECURITY FIX: Không dùng SELECT *, chỉ lấy safe columns
+    return await queryOne<any>(
+      "SELECT id, email, name, username, avatar_url, balance, role, created_at, updated_at FROM users WHERE email = ? AND deleted_at IS NULL",
+      [email]
+    )
   } catch (err) {
     logger.error("MySQL: getUserByEmail error", err, { email })
     throw err
@@ -412,33 +388,43 @@ export async function createOrUpdateUserMySQL(userData: {
 }
 
 export async function normalizeUserIdMySQL(
-  userId: string | number,
+  firebaseUidOrEmail: string | number,
   userEmail?: string,
 ): Promise<number | null> {
   try {
-    if (typeof userId === "number") return userId
-    // ✅ BUG #2 FIX: Nếu userId là pure numeric string, parse và trả về ngay
-    const numId = parseInt(String(userId), 10)
-    if (!isNaN(numId) && String(numId) === String(userId)) return numId
-    // Thử tìm theo email trước
-    if (userEmail) {
-      const id = await getUserIdByEmailMySQL(userEmail)
-      if (id) return id
+    // ✅ SECURITY FIX: KHÔNG bao giờ tin numeric ID truyền trực tiếp từ client.
+    // Chỉ resolve ID từ Firebase UID (string) hoặc Email.
+    
+    // 1. Thử tìm theo Firebase UID (nếu có column firebase_uid hoặc uid)
+    // Một số bảng lưu uid trong 'firebase_uid' hoặc 'uid'
+    const rowUid = await queryOne<any>(
+      "SELECT id FROM users WHERE firebase_uid = ? OR username = ? OR email = ?", 
+      [firebaseUidOrEmail, firebaseUidOrEmail, userEmail || firebaseUidOrEmail]
+    );
+    if (rowUid) return Number(rowUid.id);
+
+    // 2. Thử tìm theo email nếu tham số firebaseUidOrEmail trông giống email
+    if (typeof firebaseUidOrEmail === 'string' && firebaseUidOrEmail.includes('@')) {
+      const id = await getUserIdByEmailMySQL(firebaseUidOrEmail);
+      if (id) return id;
     }
-    // ✅ BUG #2 FIX: Nếu userId là Firebase UID (string), thử tìm theo uid column trong DB
-    // Một số DB schema lưu Firebase UID vào column `firebase_uid` hoặc metadata
-    // Fallback: tìm theo email
-    logger.warn('normalizeUserIdMySQL: Cannot resolve string userId without email', { userId, userEmail })
+    
+    if (userEmail) {
+      const id = await getUserIdByEmailMySQL(userEmail);
+      if (id) return id;
+    }
+
+    logger.warn('normalizeUserIdMySQL: Failed to resolve database ID', { firebaseUidOrEmail, userEmail })
     return null
   } catch (err) {
-    logger.error("MySQL: normalizeUserId error", err, { userId, userEmail })
+    logger.error("MySQL: normalizeUserId error", err, { firebaseUidOrEmail, userEmail })
     return null
   }
 }
 
 // ===================== DEPOSITS =====================
 
-export async function getDepositsMySQL(userId?: number) {
+export async function getDepositsMySQL(userId?: string | number) {
   try {
     let sql = `
       SELECT d.*, u.email, u.username
@@ -460,7 +446,7 @@ export async function getDepositsMySQL(userId?: number) {
 }
 
 export async function createDepositMySQL(depositData: {
-  userId: string | number
+  userId: string // Bắt buộc string (Firebase UID hoặc Email)
   amount: number
   method: string
   transactionId?: string | null
@@ -471,68 +457,21 @@ export async function createDepositMySQL(depositData: {
     const dbUserId = await normalizeUserIdMySQL(depositData.userId, depositData.userEmail)
     if (!dbUserId) throw new Error("Cannot resolve user ID")
 
-    let insertId: number;
     const hasTransactionId = !!depositData.transactionId;
+    
+    // ✅ BRIDGE: Dùng syntax MySQL, bridge sẽ tự chuyển sang Postgres + RETURNING
+    const sql = hasTransactionId
+      ? `INSERT INTO deposits (user_id, amount, method, transaction_id, user_email, user_name, status, timestamp)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW())`
+      : `INSERT INTO deposits (user_id, amount, method, user_email, user_name, status, timestamp)
+         VALUES (?, ?, ?, ?, ?, 'pending', NOW())`;
 
-    if (usePostgresBridge) {
-      if (hasTransactionId) {
-        const result = await conn.query(
-          `INSERT INTO deposits (user_id, amount, method, transaction_id, user_email, user_name, status, timestamp)
-           VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW()) RETURNING id`,
-          [
-            dbUserId,
-            depositData.amount,
-            depositData.method,
-            depositData.transactionId || null,
-            depositData.userEmail || null,
-            depositData.userName || null,
-          ]
-        )
-        insertId = (result[0] as any[])[0]?.id;
-      } else {
-        const result = await conn.query(
-          `INSERT INTO deposits (user_id, amount, method, user_email, user_name, status, timestamp)
-           VALUES (?, ?, ?, ?, ?, 'pending', NOW()) RETURNING id`,
-          [
-            dbUserId,
-            depositData.amount,
-            depositData.method,
-            depositData.userEmail || null,
-            depositData.userName || null,
-          ]
-        )
-        insertId = (result[0] as any[])[0]?.id;
-      }
-    } else {
-      let result;
-      if (hasTransactionId) {
-        result = await conn.execute(
-          `INSERT INTO deposits (user_id, amount, method, transaction_id, user_email, user_name, status, timestamp)
-           VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW())`,
-          [
-            dbUserId,
-            depositData.amount,
-            depositData.method,
-            depositData.transactionId || null,
-            depositData.userEmail || null,
-            depositData.userName || null,
-          ]
-        )
-      } else {
-        result = await conn.execute(
-          `INSERT INTO deposits (user_id, amount, method, user_email, user_name, status, timestamp)
-           VALUES (?, ?, ?, ?, ?, 'pending', NOW())`,
-          [
-            dbUserId,
-            depositData.amount,
-            depositData.method,
-            depositData.userEmail || null,
-            depositData.userName || null,
-          ]
-        )
-      }
-      insertId = (result[0] as any).insertId;
-    }
+    const params = hasTransactionId
+      ? [dbUserId, depositData.amount, depositData.method, depositData.transactionId, depositData.userEmail || null, depositData.userName || null]
+      : [dbUserId, depositData.amount, depositData.method, depositData.userEmail || null, depositData.userName || null];
+
+    const [result] = await conn.execute(sql, params);
+    const insertId = (result as any).insertId;
 
     return { id: insertId, timestamp: new Date().toISOString() }
   })
@@ -540,7 +479,7 @@ export async function createDepositMySQL(depositData: {
 
 export async function approveDepositAndUpdateBalanceMySQL(
   depositId: number,
-  userId: number,
+  userId: string | number,
   amount: number,
   approvedBy: string,
 ) {
@@ -615,7 +554,7 @@ export async function updateDepositStatusMySQL(
 
 // ===================== WITHDRAWALS =====================
 
-export async function getWithdrawalsMySQL(userId?: number) {
+export async function getWithdrawalsMySQL(userId?: string | number) {
   try {
     let sql = `
       SELECT w.*, u.email, u.username
@@ -636,7 +575,7 @@ export async function getWithdrawalsMySQL(userId?: number) {
 }
 
 export async function createWithdrawalMySQL(withdrawalData: {
-  userId: string | number
+  userId: string // Bắt buộc string
   amount: number
   bankName: string
   accountNumber: string
@@ -662,47 +601,28 @@ export async function createWithdrawalMySQL(withdrawalData: {
       throw new Error("You have a pending withdrawal request. Please wait for approval.")
     }
 
-    // ✅ FIX: Trừ tiền user_balance ngay lập tức atomically
+    // ✅ Trừ tiền user_balance ngay lập tức atomically
     await conn.query(
       "UPDATE users SET balance = balance - ?, updated_at = NOW() WHERE id = ? AND balance >= ?",
       [withdrawalData.amount, dbUserId, withdrawalData.amount]
     )
 
-    let insertId: number;
-
-    if (usePostgresBridge) {
-      const result = await conn.query(
-        `INSERT INTO withdrawals (
-          user_id, amount, bank_name, account_number, account_name, user_email, status, created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW()) RETURNING id`,
-        [
-          dbUserId,
-          withdrawalData.amount,
-          withdrawalData.bankName,
-          withdrawalData.accountNumber,
-          withdrawalData.accountName,
-          withdrawalData.userEmail || null,
-        ]
-      )
-      insertId = (result[0] as any[])[0]?.id;
-    } else {
-      const [result]: any = await conn.query(
-        `INSERT INTO withdrawals (
+    // ✅ BRIDGE: Dùng syntax MySQL
+    const [result] = await conn.execute(
+      `INSERT INTO withdrawals (
           user_id, amount, bank_name, account_number, account_name, user_email, status, created_at
         )
         VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW())`,
-        [
-          dbUserId,
-          withdrawalData.amount,
-          withdrawalData.bankName,
-          withdrawalData.accountNumber,
-          withdrawalData.accountName,
-          withdrawalData.userEmail || null,
-        ]
-      )
-      insertId = (result as any).insertId;
-    }
+      [
+        dbUserId,
+        withdrawalData.amount,
+        withdrawalData.bankName,
+        withdrawalData.accountNumber,
+        withdrawalData.accountName,
+        withdrawalData.userEmail || null,
+      ]
+    )
+    const insertId = (result as any).insertId;
 
     return { id: insertId, createdAt: new Date().toISOString() }
   })
@@ -710,7 +630,7 @@ export async function createWithdrawalMySQL(withdrawalData: {
 
 export async function approveWithdrawalAndUpdateBalanceMySQL(
   withdrawalId: number,
-  userId: number,
+  userId: string | number,
   amount: number,
   approvedBy: string,
 ) {
@@ -821,7 +741,7 @@ export async function updateWithdrawalStatusMySQL(
 
 // ===================== PURCHASES =====================
 
-export async function getPurchasesMySQL(userId?: number) {
+export async function getPurchasesMySQL(userId?: string | number) {
   try {
     let sql = `
       SELECT p.*, pr.title AS product_title, pr.price, pr.download_url, pr.demo_url, pr.description, pr.category, pr.image_url, u.email, u.username
@@ -843,7 +763,7 @@ export async function getPurchasesMySQL(userId?: number) {
 }
 
 export async function createBulkPurchaseMySQL(purchaseData: {
-  userId: string | number
+  userId: string | number // Chấp nhận cả UUID string và numeric ID
   items: { id: string | number; quantity: number }[]
   userEmail?: string
 }) {
@@ -899,29 +819,22 @@ export async function createBulkPurchaseMySQL(purchaseData: {
       [totalAmount, dbUserId, totalAmount],
     )
 
-    const results = []
+    const purchaseIds = []
     for (const item of validatedItems) {
-      if (usePostgresBridge) {
-        const res = await conn.query(
-          "INSERT INTO purchases (user_id, product_id, amount, created_at) VALUES (?, ?, ?, NOW()) RETURNING id",
-          [dbUserId, item.id, item.amount]
-        )
-        results.push({ id: (res[0] as any[])[0]?.id })
-      } else {
-        const [res]: any = await conn.query(
-          "INSERT INTO purchases (user_id, product_id, amount, created_at) VALUES (?, ?, ?, NOW())",
-          [dbUserId, item.id, item.amount],
-        )
-        results.push({ id: res.insertId })
-      }
+      // ✅ BRIDGE: Dùng execute cho INSERT để lấy insertId qua OkPacket giả lập
+      const [res] = await conn.execute(
+        "INSERT INTO purchases (user_id, product_id, amount, created_at) VALUES (?, ?, ?, NOW())",
+        [dbUserId, item.id, item.amount]
+      )
+      purchaseIds.push((res as any).insertId)
     }
 
-    return { success: true, newBalance: currentBalance - totalAmount, purchaseIds: results.map(r => r.id) }
+    return { success: true, newBalance: currentBalance - totalAmount, purchaseIds }
   })
 }
 
 export async function createPurchaseMySQL(purchaseData: {
-  userId: string | number
+  userId: string | number // Chấp nhận cả UUID string và numeric ID
   productId: string | number
   amount: number
   userEmail?: string
@@ -968,24 +881,13 @@ export async function createPurchaseMySQL(purchaseData: {
       throw new Error(`Số dư không đủ. Cần ${finalPurchasePrice.toLocaleString('vi-VN')}đ, hiện có ${currentBalance.toLocaleString('vi-VN')}đ`)
     }
 
-    let purchaseId: number;
+    // 5. Tạo bản ghi mua hàng & Cập nhật số dư atomically
+    const [pResult] = await conn.execute(
+      "INSERT INTO purchases (user_id, product_id, amount, created_at) VALUES (?, ?, ?, NOW())",
+      [dbUserId, productIdNum, finalPurchasePrice]
+    )
+    const purchaseId = (pResult as any).insertId;
 
-    // 5. Tạo bản ghi mua hàng
-    if (usePostgresBridge) {
-      const result = await conn.query(
-        "INSERT INTO purchases (user_id, product_id, amount, created_at) VALUES (?, ?, ?, NOW()) RETURNING id",
-        [dbUserId, productIdNum, finalPurchasePrice]
-      )
-      purchaseId = (result[0] as any[])[0]?.id;
-    } else {
-      const [pRows]: any = await conn.query(
-        "INSERT INTO purchases (user_id, product_id, amount, created_at) VALUES (?, ?, ?, NOW())",
-        [dbUserId, productIdNum, finalPurchasePrice],
-      )
-      purchaseId = (pRows as any).insertId;
-    }
-
-    // 6. Cập nhật số dư atomically
     await conn.query(
       "UPDATE users SET balance = balance - ?, updated_at = NOW() WHERE id = ? AND balance >= ?",
       [finalPurchasePrice, dbUserId, finalPurchasePrice],
@@ -1082,7 +984,7 @@ export {
 
 // ===================== USER PROFILE =====================
 
-export async function getUserProfileByUserIdMySQL(userId: number) {
+export async function getUserProfileByUserIdMySQL(userId: string | number) {
   try {
     return await queryOne<any>("SELECT * FROM user_profiles WHERE user_id = ?", [userId])
   } catch (err) {
@@ -1385,7 +1287,7 @@ export async function deleteProductMySQL(productId: number) {
 }
 
 export async function trackDownloadMySQL(downloadData: {
-  userId: number
+  userId: string | number
   productId: number
   ipAddress?: string
   userAgent?: string
@@ -1510,7 +1412,7 @@ export async function trackDownloadMySQL(downloadData: {
 // ===================== NOTIFICATIONS =====================
 
 export async function createNotificationMySQL(notificationData: {
-  userId: number
+  userId: string | number
   type: string
   title?: string | null
   message: string
@@ -1557,39 +1459,35 @@ export async function createNotificationMySQL(notificationData: {
   }
 }
 
-export async function getNotificationsMySQL(userId?: number, isRead?: boolean) {
+export async function getNotificationsMySQL(userId: string | number, isRead?: boolean, limit: number = 20) {
   try {
-    let sql = "SELECT * FROM notifications WHERE 1=1"
-    const params: any[] = []
-
-    if (userId) {
-      sql += " AND user_id = ?"
-      params.push(userId)
-    }
+    let sql = "SELECT * FROM notifications WHERE user_id = ? AND deleted_at IS NULL"
+    const params: any[] = [userId]
 
     if (isRead !== undefined) {
       sql += " AND is_read = ?"
       params.push(isRead)
     }
 
-    sql += " ORDER BY created_at DESC"
+    sql += " ORDER BY created_at DESC LIMIT ?"
+    params.push(limit)
 
     return await query<any>(sql, params)
   } catch (err) {
-    logger.error("MySQL: getNotifications error", err, { userId, isRead })
+    logger.error("MySQL: getNotifications error", err, { userId, isRead, limit })
     throw err
   }
 }
 
-export async function markNotificationAsReadMySQL(notificationId: number, userId: number) {
+export async function markNotificationAsReadMySQL(id: number, userId: string | number) {
   try {
     const result = await query(
       "UPDATE notifications SET is_read = TRUE WHERE id = ? AND user_id = ?",
-      [notificationId, userId]
+      [id, userId]
     )
-    return result.length > 0 ? { id: notificationId } : null
+    return result.length > 0 ? { id } : null
   } catch (err) {
-    logger.error("MySQL: markNotificationAsRead error", err, { notificationId, userId })
+    logger.error("MySQL: markNotificationAsRead error", err, { id, userId })
     throw err
   }
 }
@@ -2117,7 +2015,7 @@ export async function getReferralByCodeMySQL(referralCode: string) {
   }
 }
 
-export async function getReferrerByReferredIdMySQL(referredId: number) {
+export async function getReferrerByReferredIdMySQL(referredId: string | number) {
   try {
     return await queryOne<any>(
       `SELECT referrer_id, commission_percent FROM referrals 
@@ -2130,7 +2028,7 @@ export async function getReferrerByReferredIdMySQL(referredId: number) {
   }
 }
 
-export async function processReferralCommissionMySQL(referredId: number, purchaseAmount: number) {
+export async function processReferralCommissionMySQL(referredId: string | number, purchaseAmount: number) {
   try {
     const referral = await getReferrerByReferredIdMySQL(referredId)
     if (!referral) return null

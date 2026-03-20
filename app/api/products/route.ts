@@ -39,6 +39,10 @@ export async function GET(request: NextRequest) {
 
     if (isActive !== null && isActive !== undefined) {
       filters.isActive = isActive === 'true';
+    } else {
+      // ✅ SECURITY FIX: Mặc định chỉ trả sản phẩm active cho public requests
+      // Admin muốn xem draft phải gửi isActive=false
+      filters.isActive = true;
     }
 
     if (limit) {

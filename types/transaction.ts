@@ -5,7 +5,9 @@
 export interface Deposit {
   id: number | string
   userId: number | string
+  user_id?: number | string
   userEmail?: string | null
+  user_email?: string | null
   userName?: string | null
   amount: number | string
   method?: string | null
@@ -20,7 +22,9 @@ export interface Deposit {
 export interface Withdrawal {
   id: number | string
   userId: number | string
+  user_id?: number | string
   userEmail?: string | null
+  user_email?: string | null
   userName?: string | null
   amount: number | string
   bankName?: string | null

@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
     const downloads = await query(`
       SELECT 
         d.id,
+        d.user_id,
         d.product_id,
         d.downloaded_at AS created_at,
         d.ip_address,
@@ -43,18 +44,19 @@ export async function GET(request: NextRequest) {
         p.version,
         p.file_size AS size,
         p.download_url,
-        (SELECT COUNT(*) FROM downloads WHERE product_id = d.product_id AND user_id = $1) AS total_downloads
+        (SELECT COUNT(*) FROM downloads WHERE product_id = d.product_id AND user_id = ?) AS total_downloads
       FROM downloads d
       LEFT JOIN products p ON d.product_id = p.id
-      WHERE d.user_id = $1
+      WHERE d.user_id = ?
       ORDER BY d.downloaded_at DESC
       LIMIT 100
-    `, [dbUserId])
+    `, [dbUserId, dbUserId])
 
     return NextResponse.json({
       success: true,
       downloads: (downloads || []).map((d: any) => ({
         id: d.id,
+        user_id: d.user_id,
         product_id: d.product_id,
         product_title: d.product_title || 'Sản phẩm',
         version: d.version || '1.0',

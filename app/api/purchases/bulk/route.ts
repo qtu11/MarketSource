@@ -18,13 +18,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { items, userId } = body;
+    const { items } = body;
+    // ✅ SECURITY FIX: KHÔNG tin userId từ client, chỉ dùng session
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ success: false, error: 'Giỏ hàng trống hoặc dữ liệu không hợp lệ' }, { status: 400 });
     }
 
-    const dbUserId = await normalizeUserIdMySQL(userId || authUser.uid, authUser.email || undefined);
+    const dbUserId = await normalizeUserIdMySQL(authUser.uid, authUser.email || undefined);
     if (!dbUserId) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }

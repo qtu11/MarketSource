@@ -124,23 +124,13 @@ export async function POST(request: NextRequest) {
         adminEmail
       );
 
-      // Sync với userManager (Firestore/localStorage)
-      try {
-        const stringUserId = String(userId);
-        const userData = await userManager.getUserData(stringUserId);
-        if (userData) {
-          await userManager.updateBalance(stringUserId, result.newBalance);
-        }
-      } catch (syncError) {
-        const { logger } = await import('@/lib/logger');
-        logger.warn('userManager sync failed (non-critical)', { error: syncError, userId });
-      }
+      // Legacy sync with client-side storage is disabled (Unified Database Mode)
 
       // ✅ FIX: Tạo notification cho user khi deposit được approve
       try {
         const { createNotification } = await import('@/lib/database-mysql');
         await createNotification({
-          userId: dbUserId,
+          userId: dbUserId as string | number,
           type: 'deposit_approved',
           message: `Yêu cầu nạp tiền ${amount.toLocaleString('vi-VN')}đ đã được duyệt. Số dư hiện tại: ${result.newBalance.toLocaleString('vi-VN')}đ`,
           isRead: false,

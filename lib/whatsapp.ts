@@ -12,9 +12,9 @@ type SendWhatsAppParams = {
 };
 
 function getTwilioEnv(): TwilioEnv {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID || process.env.NEXT_PUBLIC_TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN || process.env.NEXT_PUBLIC_TWILIO_AUTH_TOKEN;
-  const whatsappNumber = process.env.TWILIO_WHATSAPP_NUMBER || process.env.NEXT_PUBLIC_TWILIO_WHATSAPP_NUMBER;
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const whatsappNumber = process.env.TWILIO_WHATSAPP_NUMBER;
 
   if (!accountSid || !authToken || !whatsappNumber) {
     throw new Error('Missing Twilio configuration in environment variables');

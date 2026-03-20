@@ -11,15 +11,20 @@ export interface Product {
   originalPrice?: number | null
   category: string | null
   demoUrl?: string | null
+  demoLink?: string | null
   downloadUrl?: string | null
+  downloadLink?: string | null
   imageUrl: string | null
+  image?: string | null
   imageUrls: string[] | null
   tags: string[] | null
   isActive: boolean
   isFeatured: boolean
   featured?: boolean // Legacy field
   created_at: string | Date
+  createdAt?: string | Date
   updated_at: string | Date
+  updatedAt?: string | Date
   seller_id?: number | null
   stock?: number
   downloadCount: number
@@ -56,6 +61,8 @@ export interface Purchase {
   userId: number | string
   productId: number | string
   product?: Product
+  image?: string | null
+  imageUrl?: string | null
   amount: number | string
   created_at?: string | Date
   purchaseDate?: string | Date
@@ -68,7 +75,9 @@ export interface Purchase {
   reviewCount?: number
   review?: string | null
   downloadLink?: string | null
+  downloadUrl?: string | null
   demoLink?: string | null
+  demoUrl?: string | null
 }
 
 export interface DownloadRecord {

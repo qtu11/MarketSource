@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     password = body.password;
     name = body.name;
     username = body.username;
-    const referralCode = body.referralCode; // ✅ FIX: Receive referralCode from frontend
+    const referralCode = typeof body.referralCode === 'string' ? body.referralCode.trim() : '';
     const captchaToken = body.captchaToken;
 
     // ✅ PoW Captcha verification
@@ -80,6 +80,27 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Email này đã được đăng ký' },
         { status: 400 }
       );
+    }
+
+    // Validate referral code before creating user to avoid partial-success state
+    let referrer: { id: number; email?: string | null } | null = null
+    if (referralCode) {
+      const { getReferralByCodeMySQL } = await import('@/lib/database-mysql')
+      referrer = await getReferralByCodeMySQL(referralCode)
+
+      if (!referrer) {
+        return NextResponse.json(
+          { success: false, error: 'Mã giới thiệu không tồn tại trong hệ thống.' },
+          { status: 400 }
+        )
+      }
+
+      if (referrer.email?.toLowerCase() === email.toLowerCase()) {
+        return NextResponse.json(
+          { success: false, error: 'Bạn không thể tự giới thiệu chính mình.' },
+          { status: 400 }
+        )
+      }
     }
 
     // Hash password
@@ -157,26 +178,10 @@ export async function POST(request: NextRequest) {
       logger.debug('New user notification wrapper failed', { error: e instanceof Error ? e.message : String(e) });
     }
 
-    // ✅ BUG #8 HARD FIX: Validate referral code existence
-    if (referralCode && result.id) {
+    // Link referral only after successful account creation
+    if (referrer && result.id) {
       try {
-        const { getReferralByCodeMySQL, createReferralMySQL } = await import('@/lib/database-mysql');
-        const referrer = await getReferralByCodeMySQL(referralCode);
-        
-        if (!referrer) {
-           return NextResponse.json(
-            { success: false, error: 'Mã giới thiệu không tồn tại trong hệ thống.' },
-            { status: 400 }
-          );
-        }
-
-        if (referrer.id === result.id) {
-           return NextResponse.json(
-            { success: false, error: 'Bạn không thể tự giới thiệu chính mình.' },
-            { status: 400 }
-          );
-        }
-
+        const { createReferralMySQL } = await import('@/lib/database-mysql');
         await createReferralMySQL(referrer.id, result.id);
         const { logger } = await import('@/lib/logger');
         logger.info('Referral linked successfully', { referrerId: referrer.id, referredId: result.id });

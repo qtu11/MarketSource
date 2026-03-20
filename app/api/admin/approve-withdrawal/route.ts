@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
       try {
         const { createNotification } = await import('@/lib/database-mysql');
         await createNotification({
-          userId: dbUserId,
+          userId: dbUserId as string | number,
           type: 'withdrawal_approved',
           message: `Yêu cầu rút tiền ${amount.toLocaleString('vi-VN')}đ đã được duyệt. Tiền sẽ được chuyển vào tài khoản của bạn trong vòng 1-3 ngày làm việc. Số dư hiện tại: ${result.newBalance.toLocaleString('vi-VN')}đ`,
           isRead: false,
@@ -191,7 +191,7 @@ export async function POST(request: NextRequest) {
       try {
         const { createNotification } = await import('@/lib/database-mysql');
         await createNotification({
-          userId: dbUserIdForReject,
+          userId: dbUserIdForReject as string | number,
           type: 'withdrawal_rejected',
           message: `Yêu cầu rút tiền ${amount.toLocaleString('vi-VN')}đ đã bị từ chối. Vui lòng liên hệ admin để biết thêm chi tiết.`,
           isRead: false,

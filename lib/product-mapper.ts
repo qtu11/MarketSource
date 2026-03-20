@@ -7,6 +7,12 @@
  * Map backend product format → frontend format
  */
 export function mapBackendToFrontend(backendProduct: any): any {
+  const imageUrl = backendProduct.image_url || backendProduct.thumbnail || null;
+  const averageRating = Number(backendProduct.average_rating) || 0;
+  const downloadCount = parseInt(backendProduct.download_count || '0');
+  const createdAt = backendProduct.created_at || new Date().toISOString();
+  const updatedAt = backendProduct.updated_at || new Date().toISOString();
+
   return {
     id: Number(backendProduct.id),
     title: backendProduct.title,
@@ -15,7 +21,8 @@ export function mapBackendToFrontend(backendProduct: any): any {
     price: Number(backendProduct.price) || 0,
     originalPrice: backendProduct.original_price ? Number(backendProduct.original_price) : (Number(backendProduct.price) || 0),
     category: backendProduct.category || null,
-    imageUrl: backendProduct.image_url || null,
+    imageUrl,
+    image: imageUrl,
     imageUrls: (() => {
       const raw = backendProduct.image_urls;
       if (Array.isArray(raw)) return raw.filter(Boolean);
@@ -26,15 +33,22 @@ export function mapBackendToFrontend(backendProduct: any): any {
       return [];
     })(),
     downloadUrl: backendProduct.download_url || null,
+    downloadLink: backendProduct.download_url || null,
     demoUrl: backendProduct.demo_url || null,
-    averageRating: Number(backendProduct.average_rating) || 0,
+    demoLink: backendProduct.demo_url || null,
+    averageRating,
+    rating: averageRating,
     totalRatings: parseInt(backendProduct.total_ratings || '0'),
-    downloadCount: parseInt(backendProduct.download_count || '0'),
+    downloadCount,
+    downloads: downloadCount,
     tags: Array.isArray(backendProduct.tags) ? backendProduct.tags : (backendProduct.tags ? [backendProduct.tags] : []),
     isActive: backendProduct.is_active !== undefined ? Boolean(backendProduct.is_active) : true,
     isFeatured: Boolean(backendProduct.is_featured),
-    created_at: backendProduct.created_at || new Date().toISOString(),
-    updated_at: backendProduct.updated_at || new Date().toISOString(),
+    featured: Boolean(backendProduct.is_featured),
+    created_at: createdAt,
+    createdAt,
+    updated_at: updatedAt,
+    updatedAt,
   };
 }
 

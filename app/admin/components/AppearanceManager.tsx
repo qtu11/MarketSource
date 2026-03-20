@@ -394,8 +394,9 @@ export function AppearanceManager() {
     const handleSave = async () => {
         setIsSaving(true)
         try {
-            const { apiPost } = await import("@/lib/api-client")
-            const response = await apiPost("/api/settings", settings)
+            // ✅ FIX: Dùng apiPut (có CSRF) và wrap đúng payload shape { tokens }
+            const { apiPut } = await import("@/lib/api-client")
+            const response = await apiPut("/api/settings", { tokens: settings })
             if (response?.success) {
                 setSavedSettings({ ...settings })
                 setHasChanges(false)

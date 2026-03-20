@@ -317,17 +317,7 @@ export default function DepositPage() {
       }))
     } catch (error) {
       logger.error("Error loading deposits", error)
-      try {
-        const allDeposits = getLocalStorage<Deposit[]>("deposits", [])
-        const userDeposits = allDeposits.filter((d) => d.userEmail === email)
-        setDeposits(userDeposits.sort((a, b) => {
-          const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0
-          const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0
-          return timeB - timeA
-        }))
-      } catch (localError) {
-        logger.error("Error loading from localStorage", localError)
-      }
+      setDeposits([])
     }
   }
 
@@ -393,44 +383,13 @@ export default function DepositPage() {
           created_at: result.deposit?.created_at || result.deposit?.timestamp || new Date().toISOString(),
           ipAddress,
         }
-      } catch (apiError) {
-        logger.error('API error, saving to localStorage as fallback', apiError)
-        depositRequest = {
-          id: Date.now(),
-          userId: user.uid || user.id,
-          userEmail: user.email || null,
-          userName: user.name || user.displayName || user.email || null,
-          amount: depositAmount,
-          method: method.name,
-          accountName: method.accountName,
-          accountNumber: method.accountNumber,
-          transactionId,
-          status: "pending",
-          timestamp: new Date().toISOString(),
-          requestTimeFormatted: new Date().toLocaleString("vi-VN"),
-          created_at: new Date().toISOString(),
-          ipAddress,
-        }
-        const allDeposits = getLocalStorage<Deposit[]>("deposits", [])
-        allDeposits.push(depositRequest as Deposit)
-        setLocalStorage("deposits", allDeposits)
+      } catch (apiError: any) {
+        // ✅ FIX: API fail = thất bại thật, KHÔNG fallback sang localStorage
+        logger.error('Deposit API error', apiError)
+        throw new Error(apiError?.message || 'Không thể kết nối server. Vui lòng thử lại sau.')
       }
 
-      const notifications = getLocalStorage<Array<Record<string, unknown>>>("notifications", [])
-      notifications.push({
-        id: Date.now(),
-        type: "deposit_request",
-        title: "Yêu cầu nạp tiền mới",
-        message: `${user.name} yêu cầu nạp ${depositAmount.toLocaleString("vi-VN")}đ qua ${method.name}`,
-        user: { email: user.email, name: user.name, ipAddress },
-        timestamp: new Date().toISOString(),
-        read: false,
-        depositInfo: depositRequest
-      })
-      setLocalStorage("notifications", notifications)
-
       window.dispatchEvent(new Event("depositsUpdated"))
-      window.dispatchEvent(new Event("notificationsUpdated"))
 
       // Show success animation
       setSubmitSuccess(true)

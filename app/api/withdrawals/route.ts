@@ -113,33 +113,12 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     const withdrawalData = validation.data;
 
-    // Verify userId matches authenticated user
-    // ✅ FIX: So sánh đúng kiểu dữ liệu (string vs number)
-    if (withdrawalData.userId) {
-      const withdrawalUserIdStr = withdrawalData.userId.toString();
-      // Nếu là number (DB ID), cần check bằng email
-      if (!isNaN(Number(withdrawalData.userId))) {
-        const user = await getUserByIdMySQL(Number(withdrawalData.userId));
-        if (user && user.email !== authUser.email) {
-          return NextResponse.json({
-            success: false,
-            error: 'Unauthorized: User ID mismatch'
-          }, { status: 403 });
-        }
-      } else {
-        // Là string (Firebase UID), so sánh trực tiếp
-        if (withdrawalUserIdStr !== authUser.uid) {
-          return NextResponse.json({
-            success: false,
-            error: 'Unauthorized: User ID mismatch'
-          }, { status: 403 });
-        }
-      }
-    }
+    // ✅ SECURITY FIX: KHÔNG tin userId từ client. Luôn lấy từ authUser server-side.
+    const dbUserIdToken = authUser.uid;
 
     // Create withdrawal
     const result = await createWithdrawal({
-      userId: withdrawalData.userId || authUser.uid,
+      userId: dbUserIdToken, // Luôn dùng UID từ token
       amount: withdrawalData.amount,
       bankName: withdrawalData.bankName,
       accountNumber: withdrawalData.accountNumber,

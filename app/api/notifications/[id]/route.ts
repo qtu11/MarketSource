@@ -40,12 +40,12 @@ export async function PUT(
     await query(
       `UPDATE notifications 
        SET is_read = ?, updated_at = NOW()
-       WHERE id = ? AND user_id = ?`,
+       WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
       [is_read ? 1 : 0, routeParams.id, userId]
     )
 
     const notification = await queryOne<any>(
-      "SELECT * FROM notifications WHERE id = ? AND user_id = ?",
+      "SELECT * FROM notifications WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
       [routeParams.id, userId]
     )
 
@@ -99,21 +99,17 @@ export async function DELETE(
     }
 
     // Soft delete notification
-    await query(
+    const result = await query(
       `UPDATE notifications 
        SET deleted_at = NOW()
-       WHERE id = ? AND user_id = ?`,
+       WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
       [routeParams.id, userId]
-    )
+    ) as any
 
-    const notification = await queryOne<any>(
-      "SELECT * FROM notifications WHERE id = ? AND user_id = ?",
-      [routeParams.id, userId]
-    )
-
-    if (!notification) {
+    // ✅ FIX: Dùng affectedRows từ bridge để biết có xoá thật hay không
+    if (!result || result.affectedRows === 0) {
       return NextResponse.json(
-        { error: 'Notification not found' },
+        { error: 'Notification not found or already deleted' },
         { status: 404 }
       )
     }

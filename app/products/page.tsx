@@ -11,6 +11,7 @@ import { Star, Download, Eye, ShoppingCart, Search, X, ExternalLink, Tag, Layers
 import { FloatingHeader } from "@/components/floating-header"
 import { Footer } from "@/components/footer"
 import dynamic from "next/dynamic"
+import NextImage from "next/image"
 import { getLocalStorage, setLocalStorage } from "@/lib/localStorage-utils"
 import { logger } from "@/lib/logger-client"
 import { ProductSkeletonGrid } from "@/components/product-skeleton"
@@ -400,12 +401,14 @@ export default function ProductsPage() {
               >
                 <div className="relative overflow-hidden">
                   {/* ✅ FIX: Dùng img native thay next/image để tránh Next.js optimizer block external CDN */}
-                  <img
+                  <NextImage
                     src={product.image || "/placeholder.svg"}
                     alt={product.title || 'Product'}
+                    fill
+                    unoptimized
+                    sizes="(max-width: 1024px) 100vw, 33vw"
                     className="w-full h-48 object-cover group-hover:scale-110 transition-transform duration-500"
-                    onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.svg' }}
-                    loading="lazy"
+                    onError={(e) => { e.currentTarget.src = "/placeholder.svg" }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                   {product.featured && (

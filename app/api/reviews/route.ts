@@ -159,3 +159,39 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, error: error.message || 'Internal server error' }, { status: 500 });
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const authUser = await verifyFirebaseToken(request);
+    if (!authUser?.email) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const userId = await getUserIdByEmail(authUser.email);
+    if (!userId) {
+      return NextResponse.json({ success: false, error: 'User not found in database' }, { status: 404 });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const reviewId = Number(body?.reviewId);
+
+    if (!reviewId) {
+      return NextResponse.json({ success: false, error: 'Missing reviewId' }, { status: 400 });
+    }
+
+    const result = await query<any>(
+      'DELETE FROM reviews WHERE id = ? AND user_id = ?',
+      [reviewId, userId]
+    );
+
+    const affectedRows = (result as any).affectedRows || 0;
+    if (affectedRows === 0) {
+      return NextResponse.json({ success: false, error: 'Review not found or unauthorized' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, reviewId });
+  } catch (error: any) {
+    logger.error('Review DELETE error', error);
+    return NextResponse.json({ success: false, error: error.message || 'Internal server error' }, { status: 500 });
+  }
+}

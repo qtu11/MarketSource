@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 export const runtime = 'nodejs'
 
@@ -813,29 +813,15 @@ function AdminPageContent() {
   }, [pendingDeposits, adminUser, processingDeposit, processDepositApproval, loadData]);
 
   const rejectDeposit = useCallback(async (depositId: string) => {
-    if (!confirm("Bạn có chắc chắn muốn từ chối yêu cầu này?")) return;
+    if (!confirm("Ban co chac chan muon tu choi yeu cau nay?")) return;
 
     try {
       const deposit = pendingDeposits.find(d => d.id === depositId);
       if (!deposit) {
-        alert("Không tìm thấy yêu cầu nạp tiền!");
+        alert("Khong tim thay yeu cau nap tien!");
         return;
       }
 
-      await processDepositRejection(deposit);
-
-      alert("Đã từ chối yêu cầu nạp tiền!");
-    } catch (error) {
-      // ✅ FIX: Migrate console → logger
-      const { logger } = await import('@/lib/logger');
-      logger.error("Error rejecting deposit", error);
-      alert("Có lỗi xảy ra!");
-    }
-  }, [pendingDeposits]);
-
-  const processDepositRejection = async (deposit: any) => {
-    try {
-      // ✅ FIX: Gọi admin API route thay vì saveDeposit() để đảm bảo CSRF + admin auth
       const { apiPost } = await import('@/lib/api-client');
       const result = await apiPost('/api/admin/approve-deposit', {
         depositId: deposit.id,
@@ -844,17 +830,19 @@ function AdminPageContent() {
         userEmail: deposit.userEmail || deposit.user_email,
         action: 'reject',
       });
+
       if (!result.success) {
         throw new Error(result.error || 'Failed to reject deposit');
       }
-      // Reload data sau khi reject thành công
+
       await loadData();
+      alert("Da tu choi yeu cau nap tien!");
     } catch (error) {
       const { logger } = await import('@/lib/logger');
-      logger.error("Error in processDepositRejection", error);
-      throw error;
+      logger.error("Error rejecting deposit", error);
+      alert("Co loi xay ra!");
     }
-  };
+  }, [pendingDeposits, loadData]);
 
   const approveWithdrawal = useCallback(async (withdrawalId: string) => {
     if (processingWithdrawal) return;
@@ -1015,29 +1003,15 @@ function AdminPageContent() {
   };
 
   const rejectWithdrawal = useCallback(async (withdrawalId: string) => {
-    if (!confirm("Bạn có chắc chắn muốn từ chối yêu cầu này?")) return;
+    if (!confirm("Ban co chac chan muon tu choi yeu cau nay?")) return;
 
     try {
       const withdrawal = pendingWithdrawals.find(w => w.id.toString() === withdrawalId);
       if (!withdrawal) {
-        alert("Không tìm thấy yêu cầu rút tiền!");
+        alert("Khong tim thay yeu cau rut tien!");
         return;
       }
 
-      await processWithdrawalRejection(withdrawal);
-
-      alert("Đã từ chối yêu cầu rút tiền!");
-    } catch (error) {
-      // ✅ FIX: Migrate console → logger
-      const { logger } = await import('@/lib/logger');
-      logger.error("Error rejecting withdrawal", error);
-      alert("Có lỗi xảy ra!");
-    }
-  }, [pendingWithdrawals]);
-
-  const processWithdrawalRejection = async (withdrawal: any) => {
-    try {
-      // ✅ FIX: Gọi admin API route thay vì saveWithdrawal() để đảm bảo CSRF + admin auth
       const { apiPost } = await import('@/lib/api-client');
       const result = await apiPost('/api/admin/approve-withdrawal', {
         withdrawalId: withdrawal.id,
@@ -1049,14 +1023,15 @@ function AdminPageContent() {
       if (!result.success) {
         throw new Error(result.error || 'Failed to reject withdrawal');
       }
-      // Reload data sau khi reject thành công
+
       await loadData();
+      alert("Da tu choi yeu cau rut tien!");
     } catch (error) {
       const { logger } = await import('@/lib/logger');
-      logger.error("Error in processWithdrawalRejection", error);
-      throw error;
+      logger.error("Error rejecting withdrawal", error);
+      alert("Co loi xay ra!");
     }
-  };
+  }, [pendingWithdrawals, loadData]);
 
   // Enhanced User management functions with account independence
   const updateUserStatus = useCallback(async (userId: string, newStatus: string) => {

@@ -22,30 +22,8 @@ const CACHE_TTL = 5000; // 5 giây
  * @deprecated Dùng getUsers từ database.ts thay thế
  */
 export function getUserData(): any[] {
-  // Try to get from localStorage cache (for backward compatibility)
-  if (typeof window !== 'undefined') {
-    try {
-      const keys = Object.keys(localStorage);
-      const users: any[] = [];
-      keys.forEach(key => {
-        if (key.startsWith('user_') || key === 'currentUser' || key === 'qtusdev_user') {
-          try {
-            const user = JSON.parse(localStorage.getItem(key) || '{}');
-            if (user.uid || user.email) {
-              users.push(user);
-            }
-          } catch (e) {
-            // Skip invalid entries
-          }
-        }
-      });
-      return users;
-    } catch (error) {
-      logger.warn('Error getting users from localStorage', { error });
-    }
-  }
-
-  // Return empty array if no cache
+  // ✅ FIX: Không còn quét localStorage. Admin UI nên dùng userManager.getAllUsers()
+  logger.info('admin-helpers.getUserData called. LocalStorage scanning is now disabled for security and consistency.');
   return [];
 }
 

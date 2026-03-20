@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
     // ✅ Gemini Auto-Reply - Chỉ khi KHÁCH gửi tin nhắn (không phải admin)
     // Và không có admin nào đang login để trả lời realtime (optional logic)
     let autoReplyMessage: any = null;
-    if (!isAdmin && (process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY) && process.env.ENABLE_AUTO_REPLY === 'true') {
+    if (!isAdmin && process.env.GEMINI_API_KEY && process.env.ENABLE_AUTO_REPLY === 'true') {
       try {
         autoReplyMessage = await generateAutoReply(sanitizedMessage, targetUserId);
 
@@ -165,7 +165,13 @@ export async function POST(request: NextRequest) {
         message: sanitizedMessage,
         isAdmin,
         createdAt: result.createdAt
-      }
+      },
+      autoReply: autoReplyMessage
+        ? {
+            message: autoReplyMessage,
+            senderType: 'ai',
+          }
+        : null,
     });
 
   } catch (error: any) {
@@ -179,9 +185,7 @@ export async function GET(request: NextRequest) {
     // ✅ FIX: Thêm rate limiting
     const { checkRateLimitAndRespond } = await import('@/lib/rate-limit');
     const rateLimitResponse = await checkRateLimitAndRespond(request, 30, 10, 'chat-get');
-    if (rateLimitResponse) {
-      return rateLimitResponse;
-    }
+    if (rateLimitResponse) return rateLimitResponse;
 
     const authUser = await verifyAuthUser(request);
     if (!authUser) {
@@ -216,7 +220,7 @@ export async function GET(request: NextRequest) {
     // Get chats với pagination ở database level
     let chats;
     if (isAdmin) {
-      // Admin có thể xem chat với user cụ thể hoặc tất cả
+      // Admin có thể xem chat with user cụ thể hoặc tất cả
       if (userIdParam) {
         chats = await getChats(parseInt(userIdParam), currentUserId, limit, offset);
       } else {
@@ -268,7 +272,7 @@ export async function GET(request: NextRequest) {
  */
 async function generateAutoReply(userMessage: string, userId: number): Promise<string | null> {
   try {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return getSmartFallbackReply(userMessage);
     }
@@ -317,8 +321,8 @@ Câu hỏi khách hàng: "${userMessage}"
 
 Yêu cầu: Trả lời bằng tiếng Việt, ngắn gọn, thân thiện. Nếu không chắc → đề nghị liên hệ admin.`;
 
-    const result = await model.generateContent(prompt);
-    const response = result.response;
+    const AIresult = await model.generateContent(prompt);
+    const response = AIresult.response;
     const reply = response.text().trim();
 
     const sanitizedReply = sanitizeMessage(reply);
@@ -337,7 +341,6 @@ Yêu cầu: Trả lời bằng tiếng Việt, ngắn gọn, thân thiện. Nế
 
 /**
  * ✅ NEW: Smart fallback reply khi Gemini không hoạt động
- * Phân tích keyword trong tin nhắn để trả lời cơ bản
  */
 function getSmartFallbackReply(message: string): string {
   const lower = message.toLowerCase();
@@ -381,11 +384,9 @@ function findMentionedProduct(message: string, products: Product[]): Product | n
 
   const lowerMessage = message.toLowerCase();
 
-  // Tìm sản phẩm có tên xuất hiện trong câu hỏi
   for (const product of products) {
     if (product.title) {
       const productTitle = product.title.toLowerCase();
-      // Kiểm tra nếu tên sản phẩm hoặc từ khóa chính xuất hiện trong câu hỏi
       const titleWords = productTitle.split(/\s+/).filter((w: string) => w.length > 3);
       if (titleWords.some((word: string) => lowerMessage.includes(word)) || lowerMessage.includes(productTitle)) {
         return product;

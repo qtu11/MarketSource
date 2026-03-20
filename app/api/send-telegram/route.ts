@@ -2,21 +2,29 @@ import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
+import { requireAdmin } from '@/lib/api-auth';
+import { checkRateLimitAndRespond } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs'
 
 // ✅ FIX: Validation schema cho Telegram message
 const telegramMessageSchema = z.object({
   message: z.string().min(1, 'Message không được để trống').max(4096, 'Message quá dài (tối đa 4096 ký tự)'),
+  chatId: z.string().optional(),
 });
 
 export async function POST(request: NextRequest) {
   try {
-    // ✅ SECURITY FIX: Chỉ dùng server-side env vars (không expose ra client)
-    const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID || process.env.NEXT_PUBLIC_TELEGRAM_CHAT_ID;
+    const rateLimitResponse = await checkRateLimitAndRespond(request, 10, 60, 'send-telegram');
+    if (rateLimitResponse) return rateLimitResponse;
 
-    if (!botToken || !chatId) {
+    await requireAdmin(request);
+
+    // Server-only secrets
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const defaultChatId = process.env.TELEGRAM_CHAT_ID;
+
+    if (!botToken || !defaultChatId) {
       return NextResponse.json(
         { error: 'Telegram bot token hoặc chat ID chưa được cấu hình' },
         { status: 500 }
@@ -35,7 +43,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { message } = validation.data;
+    const { message, chatId } = validation.data;
 
     // ✅ FIX: Sanitize HTML để tránh XSS (basic)
     const sanitizedMessage = message
@@ -50,7 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      chat_id: chatId,
+      chat_id: chatId || defaultChatId,
       text: sanitizedMessage,
       parse_mode: 'HTML',
     });

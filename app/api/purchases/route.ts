@@ -161,6 +161,7 @@ export async function POST(request: NextRequest) {
         error: 'Cannot resolve user ID. User may not exist in database.'
       }, { status: 400 });
     }
+    const dbUserIdNum = Number(dbUserId);
 
     // ✅ FIX: Remove duplicate check trước transaction - rely on database constraint và check trong transaction
     // createPurchase đã có check duplicate trong transaction với row locking, đảm bảo atomicity
@@ -168,7 +169,7 @@ export async function POST(request: NextRequest) {
       ? purchaseData.productId
       : parseInt(purchaseData.productId.toString(), 10);
     const result = await createPurchase({
-      userId: dbUserId, // Dùng DB ID đã normalize
+      userId: dbUserIdNum, // Dùng DB ID đã normalize
       productId: productIdNum,
       amount: purchaseData.amount,
       userEmail: authUser.email || undefined
@@ -176,7 +177,7 @@ export async function POST(request: NextRequest) {
 
     // ✅ FIX: Xử lý hoa hồng giới thiệu (Referral Commission)
     try {
-      const commissionResult = await processReferralCommissionMySQL(dbUserId, purchaseData.amount);
+      const commissionResult = await processReferralCommissionMySQL(dbUserIdNum, purchaseData.amount);
       if (commissionResult) {
         // Lấy thông tin người giới thiệu để gửi thông báo chi tiết
         const { getUserByIdMySQL } = await import('@/lib/database-mysql');
@@ -198,7 +199,7 @@ export async function POST(request: NextRequest) {
           isRead: false
         });
         
-        logger.info('Referral commission processed', { ...commissionResult, referredId: dbUserId });
+        logger.info('Referral commission processed', { ...commissionResult, referredId: dbUserIdNum });
       }
     } catch (refError) {
       logger.error('Failed to process referral commission', refError);
@@ -218,7 +219,7 @@ export async function POST(request: NextRequest) {
     try {
       const { createChat } = await import('@/lib/database-mysql');
       await createChat({
-        userId: dbUserId,
+        userId: dbUserIdNum,
         adminId: null, // Tin nhắn tự động từ hệ thống
         message: `🤖 Chúc mừng bạn đã mua thành công sản phẩm "${product?.title || `Sản phẩm #${productIdNum}`}". Bạn có thể tải mã nguồn cập nhật mới nhất tại mục "Tải xuống" hoặc "Sản phẩm đã mua" trong Dashboard. Cảm ơn bạn đã tin tưởng Hệ Thống QtusDev Market! 🎉`,
         isAdmin: true, // Flag xác định bot account

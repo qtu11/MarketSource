@@ -1,12 +1,17 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { notifyDepositRequest, notifyWithdrawalRequest } from '@/lib/notifications'
 import { logger } from '@/lib/logger'
+import { requireAdmin } from '@/lib/api-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    if (process.env.NODE_ENV !== 'development') {
+      await requireAdmin(request)
+    }
+
     // This is a test endpoint to trigger notifications.
     // In a real application, these would be triggered by actual events.
 
@@ -45,6 +50,12 @@ export async function GET() {
     })
   } catch (error: any) {
     logger.error('Test notification error', error, { endpoint: '/api/test-notifications' })
+    if (error?.message?.includes('Unauthorized')) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
     return NextResponse.json(
       {
         success: false,

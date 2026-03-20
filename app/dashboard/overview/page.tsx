@@ -551,6 +551,9 @@ export default function DashboardPage() {
       try {
         const result = await apiGet('/api/downloads')
         const downloads = (result.downloads || result.data || []).filter((item: any) => {
+          if (item.user_id === undefined && item.userEmail === undefined) {
+            return true
+          }
           const uid = user.uid?.toString()
           const id = user.id?.toString()
           const downloadUserId = item.user_id?.toString()
@@ -575,7 +578,7 @@ export default function DashboardPage() {
         setDownloadRecords(mapped)
         setLocalStorage("downloadHistory", mapped)
       } catch (error) {
-        logger.warn("Download history fallback", { error })
+        logger.warn("Download history fetch failed", { error })
         try {
           const stored = getLocalStorage<DownloadRecord[]>("downloadHistory", [])
           setDownloadRecords(stored)
@@ -592,9 +595,13 @@ export default function DashboardPage() {
   const loadReviews = useCallback(async (user?: any) => {
     if (!user?.email) return
     try {
-      const result = await apiGet('/api/reviews')
+      const result = await apiGet('/api/reviews', user?.id ? { userId: user.id } : undefined)
       const reviews = (result.reviews || result.data || []).filter(
-        (review: any) => review.userEmail === user.email || review.user_id === user.uid || review.user_id === user.id
+        (review: any) =>
+          review.userEmail === user.email ||
+          review.user_email === user.email ||
+          review.user_id?.toString() === user.uid?.toString() ||
+          review.user_id?.toString() === user.id?.toString()
       )
       const mapped: ProductReview[] = reviews.map((review: any) => ({
         id: review.id || `${review.product_id}-${review.created_at}`,
@@ -677,6 +684,25 @@ export default function DashboardPage() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (!currentUser?.email) return
+
+    refreshDownloadHistory(currentUser)
+    loadReviews(currentUser)
+    loadReferralStats(currentUser)
+    loadCoupons(currentUser)
+    fetchDeviceSessions()
+  }, [
+    currentUser,
+    currentUser?.uid,
+    currentUser?.email,
+    refreshDownloadHistory,
+    loadReviews,
+    loadReferralStats,
+    loadCoupons,
+    fetchDeviceSessions,
+  ])
 
   const loadDeviceSessions = useCallback(async (user?: any) => {
     if (!user?.uid) return
@@ -764,46 +790,70 @@ export default function DashboardPage() {
   )
 
   const handleReviewCreate = useCallback(
-    (review: Omit<import('../components/ReviewManager').ProductReview, "id" | "createdAt">) => {
+    async (review: Omit<import('../components/ReviewManager').ProductReview, "id" | "createdAt">) => {
       if (!currentUser) return
-      const newReview: ProductReview = {
-        ...review,
-        id: `local-${Date.now()}`,
-        productId: review.productId,
-        userId: typeof currentUser.id === 'number' ? currentUser.id : String(currentUser.id),
-        rating: review.rating,
-        comment: review.comment || null,
-        createdAt: new Date().toISOString(),
+      const productId = Number(review.productId)
+      if (!productId) return
+
+      try {
+        const { apiPost } = await import('@/lib/api-client')
+        await apiPost('/api/reviews', {
+          productId,
+          rating: review.rating,
+          comment: review.comment || "",
+        })
+        await loadReviews(currentUser)
+      } catch (error) {
+        logger.error("Create review failed", error)
       }
+    },
+    [currentUser, loadReviews]
+  )
+
+  const handleReviewUpdate = useCallback(async (review: import('../components/ReviewManager').ProductReview) => {
+    if (!currentUser) return
+    const productId = Number(review.productId)
+    if (!productId) return
+
+    try {
+      const { apiPost } = await import('@/lib/api-client')
+      await apiPost('/api/reviews', {
+        productId,
+        rating: review.rating,
+        comment: review.comment || "",
+      })
+      await loadReviews(currentUser)
+    } catch (error) {
+      logger.error("Update review failed", error)
+    }
+  }, [currentUser, loadReviews])
+
+  const handleReviewDelete = useCallback(async (id: string) => {
+    const reviewId = Number(id)
+
+    if (!reviewId) {
       setUserReviews((prev) => {
-        const updated = [newReview, ...prev]
+        const updated = prev.filter((item) => item.id !== id)
         setLocalStorage("userReviews", updated)
         return updated
       })
-    },
-    [currentUser]
-  )
-
-  const handleReviewUpdate = useCallback((review: import('../components/ReviewManager').ProductReview) => {
-    if (!currentUser) return
-    const updatedReview: ProductReview = {
-      ...review,
-      userId: typeof currentUser.id === 'number' ? currentUser.id : String(currentUser.id),
-      productId: review.productId,
+      return
     }
-    setUserReviews((prev) => {
-      const updated = prev.map((item) => (item.id === review.id ? updatedReview : item))
-      setLocalStorage("userReviews", updated)
-      return updated
-    })
-  }, [currentUser])
 
-  const handleReviewDelete = useCallback((id: string) => {
-    setUserReviews((prev) => {
-      const updated = prev.filter((item) => item.id !== id)
-      setLocalStorage("userReviews", updated)
-      return updated
-    })
+    try {
+      const { apiDelete } = await import('@/lib/api-client')
+      await apiDelete('/api/reviews', {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviewId }),
+      })
+      setUserReviews((prev) => {
+        const updated = prev.filter((item) => item.id !== id)
+        setLocalStorage("userReviews", updated)
+        return updated
+      })
+    } catch (error) {
+      logger.error("Delete review failed", error)
+    }
   }, [])
 
   const handleCouponApply = useCallback(
@@ -868,10 +918,10 @@ export default function DashboardPage() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              id: (session.user as any).id || `social_${Date.now()}`,
+              uid: (session.user as any).id || `social_${Date.now()}`,
               email: session.user.email,
               name: session.user.name,
-              image: session.user.image,
+              avatarUrl: session.user.image,
               provider: (session.user as any).provider || 'google',
               ipAddress: userIP !== "Loading..." ? userIP : 'unknown'
             })
@@ -1050,6 +1100,9 @@ export default function DashboardPage() {
               const mappedPurchases = userPurchasesList.map((p: any) => {
                 const id = p.id || p.product_id;
                 const localP = localPurchases.find(lp => lp.id === id) || {};
+                const productImage = p.image_url || p.imageUrl || '/placeholder.svg';
+                const productDownloadUrl = p.download_url || null;
+                const productDemoUrl = p.demo_url || null;
                 return {
                   id: id,
                   productId: p.product_id,
@@ -1061,9 +1114,18 @@ export default function DashboardPage() {
                   amount: p.amount,
                   purchaseDate: p.created_at || new Date().toISOString(),
                   category: p.category || 'Uncategorized',
-                  image: p.image_url || p.imageUrl || '/placeholder.svg',
-                  downloadLink: p.download_url || null,
-                  demoLink: p.demo_url || null,
+                  image: productImage,
+                  imageUrl: productImage,
+                  downloadUrl: productDownloadUrl,
+                  downloadLink: productDownloadUrl,
+                  demoUrl: productDemoUrl,
+                  demoLink: productDemoUrl,
+                  product: {
+                    id: p.product_id,
+                    imageUrl: productImage,
+                    downloadUrl: productDownloadUrl,
+                    demoUrl: productDemoUrl,
+                  },
                   downloads: localP.downloads || 0,
                   rating: localP.rating || 0,
                   reviewCount: localP.reviewCount || 0
@@ -1235,7 +1297,7 @@ export default function DashboardPage() {
     };
 
     loadUser();
-  }, [router]); // ✅ FIX: Chỉ depend vào router - userIP/deviceInfo được đọc qua ref để tránh re-run thừa
+  }, [router, userIP, deviceInfo]);
 
   // Load persisted wishlist, tickets (từ API), security preferences khi đã có user
   useEffect(() => {
@@ -1281,7 +1343,7 @@ export default function DashboardPage() {
       }
     }
     fetchTickets()
-  }, [currentUser?.uid])
+  }, [currentUser?.uid, currentUser])
 
   // Persist wishlist
   useEffect(() => {
@@ -1343,7 +1405,7 @@ export default function DashboardPage() {
       window.removeEventListener('withdrawalsUpdated', handleWithdrawalsUpdated);
       window.removeEventListener('userUpdated', handleUserUpdated);
     };
-  }, [currentUser?.uid]);
+  }, [currentUser?.uid, currentUser]);
 
   // ✅ FIX: Set up real-time updates với tối ưu hiệu năng
   useEffect(() => {
@@ -1400,6 +1462,9 @@ export default function DashboardPage() {
             const mappedPurchases = userPurchasesList.map((p: any) => {
               const id = p.id || p.product_id;
               const localP = localPurchases.find(lp => lp.id === id) || {};
+              const productImage = p.image_url || p.imageUrl || '/placeholder.svg';
+              const productDownloadUrl = p.download_url || null;
+              const productDemoUrl = p.demo_url || null;
               return {
                 id: id,
                 productId: p.product_id,
@@ -1411,9 +1476,18 @@ export default function DashboardPage() {
                 amount: p.amount,
                 purchaseDate: p.created_at || new Date().toISOString(),
                 category: p.category || 'Uncategorized',
-                image: p.image_url || p.imageUrl || '/placeholder.svg',
-                downloadLink: p.download_url || null,
-                demoLink: p.demo_url || null,
+                image: productImage,
+                imageUrl: productImage,
+                downloadUrl: productDownloadUrl,
+                downloadLink: productDownloadUrl,
+                demoUrl: productDemoUrl,
+                demoLink: productDemoUrl,
+                product: {
+                  id: p.product_id,
+                  imageUrl: productImage,
+                  downloadUrl: productDownloadUrl,
+                  demoUrl: productDemoUrl,
+                },
                 downloads: localP.downloads || 0,
                 rating: localP.rating || 0,
                 reviewCount: localP.reviewCount || 0
@@ -2254,7 +2328,7 @@ export default function DashboardPage() {
                           {filteredPurchases.map((purchase) => (
                             <div key={purchase.id} className="flex items-center space-x-4 p-4 border rounded-lg">
                               <Image
-                                src={purchase.product?.imageUrl || purchase.product?.downloadUrl || "/placeholder.svg"}
+                                src={purchase.product?.imageUrl || purchase.imageUrl || purchase.image || "/placeholder.svg"}
                                 alt={purchase.title || 'Product'}
                                 width={64}
                                 height={64}
@@ -2503,7 +2577,7 @@ export default function DashboardPage() {
                       {wishlistProducts.map((product) => (
                         <div key={product.id} className="p-4 border rounded-lg flex items-start space-x-4">
                           <Image
-                            src={product.product?.imageUrl || product.product?.downloadUrl || "/placeholder.svg"}
+                            src={product.product?.imageUrl || product.imageUrl || product.image || "/placeholder.svg"}
                             alt={product.title || 'Product'}
                             width={80}
                             height={80}

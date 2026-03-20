@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { MessageSquare, Phone, Send, Bot, Shield, Key, Save, Eye, EyeOff, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import { apiGet } from "@/lib/api-client"
 
 interface SettingProps {
   adminUser: any
@@ -38,6 +39,22 @@ export function Setting({
     smtpUser: '',
     smtpPass: '',
   })
+  const [configStatus, setConfigStatus] = useState<Record<string, boolean>>({})
+
+  // Load current settings status on mount
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const result = await apiGet('/api/settings')
+        if (result.success && result.configStatus) {
+           setConfigStatus(result.configStatus)
+        }
+      } catch (err) {
+        console.error("Failed to fetch settings status", err)
+      }
+    }
+    fetchStatus()
+  }, [])
 
   const toggleShow = (key: string) => {
     setShowTokens(prev => ({ ...prev, [key]: !prev[key] }))
@@ -46,23 +63,21 @@ export function Setting({
   const handleSave = useCallback(async () => {
     setSaving(true)
     try {
-      const res = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminUser?.token || '' },
-        body: JSON.stringify({ tokens }),
-      })
-      if (res.ok) {
+      // ✅ FIX: Dùng apiPut wrapper tự động gửi CSRF token
+      const { apiPut } = await import('@/lib/api-client')
+      const result = await apiPut('/api/settings', { tokens })
+      if (result?.success) {
         setSaved(true)
         setTimeout(() => setSaved(false), 3000)
       } else {
-        alert('Lỗi khi lưu cài đặt!')
+        alert(result?.error || 'Lỗi khi lưu cài đặt!')
       }
     } catch {
       alert('Không thể kết nối server!')
     } finally {
       setSaving(false)
     }
-  }, [tokens, adminUser])
+  }, [tokens])
 
   const TokenInput = ({ label, tokenKey, placeholder, icon: Icon }: { label: string; tokenKey: string; placeholder: string; icon: any }) => (
     <div className="space-y-1.5">
@@ -73,10 +88,10 @@ export function Setting({
       <div className="relative">
         <Input
           type={showTokens[tokenKey] ? "text" : "password"}
-          placeholder={placeholder}
-          value={(tokens as any)[tokenKey]}
-          onChange={(e) => setTokens(prev => ({ ...prev, [tokenKey]: e.target.value }))}
           className="bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 pr-10 h-9 text-sm"
+          value={(tokens as any)[tokenKey] || ""}
+          placeholder={configStatus[tokenKey] ? "••••••••" : placeholder}
+          onChange={(e) => setTokens(prev => ({ ...prev, [tokenKey]: e.target.value }))}
         />
         <button
           type="button"
@@ -112,7 +127,7 @@ export function Setting({
             <TokenInput label="Chat ID" tokenKey="telegramChatId" placeholder="-1001234567890" icon={MessageSquare} />
             <div className="flex items-center justify-between pt-2">
               <Badge variant="outline" className="text-[10px] border-blue-500/30 text-blue-400">
-                {process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN ? '✅ Đã cấu hình' : '⚠️ Chưa cấu hình'}
+                {configStatus.telegramBotToken || configStatus.telegramChatId ? '✅ Đã cấu hình' : '⚠️ Chưa cấu hình'}
               </Badge>
               <Button size="sm" variant="outline" onClick={testTelegramNotification} className="h-8 text-xs border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
                 <Send className="w-3 h-3 mr-1" /> Test
@@ -138,7 +153,7 @@ export function Setting({
             <TokenInput label="Số WhatsApp" tokenKey="whatsappNumber" placeholder="whatsapp:+15706349642" icon={Phone} />
             <div className="flex items-center justify-between pt-2">
               <Badge variant="outline" className="text-[10px] border-green-500/30 text-green-400">
-                {process.env.NEXT_PUBLIC_TWILIO_WHATSAPP_NUMBER ? '✅ Đã cấu hình' : '⚠️ Chưa cấu hình'}
+                {configStatus.whatsappNumber ? '✅ Đã cấu hình' : '⚠️ Chưa cấu hình'}
               </Badge>
               <Button size="sm" variant="outline" onClick={testWhatsAppNotification} className="h-8 text-xs border-green-500/30 text-green-400 hover:bg-green-500/10">
                 <Phone className="w-3 h-3 mr-1" /> Test
@@ -164,7 +179,7 @@ export function Setting({
             <TokenInput label="API Key" tokenKey="geminiApiKey" placeholder="AIzaSy..." icon={Key} />
             <div className="flex items-center justify-between pt-2">
               <Badge variant="outline" className="text-[10px] border-purple-500/30 text-purple-400">
-                {process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY ? '✅ Đã cấu hình' : '⚠️ Chưa cấu hình'}
+                {configStatus.geminiApiKey ? '✅ Đã cấu hình' : '⚠️ Chưa cấu hình'}
               </Badge>
               <span className="text-[10px] text-slate-500">Model: gemini-2.0-flash</span>
             </div>

@@ -95,29 +95,8 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     const depositData = validation.data;
 
-    // Verify userId matches authenticated user
-    // ✅ FIX: So sánh đúng kiểu dữ liệu (string vs number)
-    if (depositData.userId) {
-      const depositUserIdStr = depositData.userId.toString();
-      // Nếu là number (DB ID), cần check bằng email
-      if (!isNaN(Number(depositData.userId))) {
-        const user = await getUserByIdMySQL(Number(depositData.userId));
-        if (user && user.email !== authUser.email) {
-          return NextResponse.json({
-            success: false,
-            error: 'Unauthorized: User ID mismatch'
-          }, { status: 403 });
-        }
-      } else {
-        // Là string (Firebase UID), so sánh trực tiếp
-        if (depositUserIdStr !== authUser.uid) {
-          return NextResponse.json({
-            success: false,
-            error: 'Unauthorized: User ID mismatch'
-          }, { status: 403 });
-        }
-      }
-    }
+    // ✅ SECURITY FIX: KHÔNG tin userId từ client. Luôn lấy từ authUser server-side.
+    const dbUserIdToken = authUser.uid;
 
     // ✅ BUG #4 HARD FIX: Strictly check for duplicate transaction ID
     if (depositData.transactionId) {
@@ -135,12 +114,12 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     // Create deposit
     const result = await createDeposit({
-      userId: depositData.userId || authUser.uid,
+      userId: dbUserIdToken, // Luôn dùng UID từ token
       amount: depositData.amount,
       method: depositData.method,
       transactionId: depositData.transactionId,
       userEmail: authUser.email || undefined,
-      userName: undefined // Có thể thêm từ user data nếu cần
+      userName: undefined
     });
 
     // Get the created deposit để trả về đầy đủ thông tin

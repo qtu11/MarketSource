@@ -15,6 +15,7 @@ import {
   Type, List, Link, AlignLeft, Package, ChevronDown, ChevronUp,
   Grid3x3, LayoutList, Maximize2
 } from 'lucide-react'
+import NextImage from "next/image"
 import {
   Dialog,
   DialogContent,
@@ -123,13 +124,15 @@ function ImagePreview({ src, alt, size = 'md', className = '' }: { src: string; 
           <span className="text-xs">{!isSafeImage(src) ? 'URL không an toàn' : 'Lỗi URL'}</span>
         </div>
       ) : (
-        <img
+        <NextImage
           src={src}
           alt={alt}
+          fill
+          unoptimized
+          sizes="(max-width: 768px) 100vw, 33vw"
           className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
           onLoad={() => setLoaded(true)}
           onError={() => setErr(true)}
-          loading="lazy"
         />
       )}
     </div>
@@ -183,11 +186,11 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
   }, [setProducts])
 
   // ✅ FIX: Parse imageUrls từ CSV string thành array (fix image không hiện)
-  const parseImageUrls = (raw: string | string[]): string[] => {
+  const parseImageUrls = useCallback((raw: string | string[]): string[] => {
     if (Array.isArray(raw)) return raw.filter(Boolean)
     if (!raw || typeof raw !== 'string') return []
     return raw.split(',').map(s => s.trim()).filter(Boolean)
-  }
+  }, [])
 
   // ✅ BUG #6 FIX: Improved URL validation (SSRF & XSS protection)
   const isValidUrl = (url: string): boolean => {
@@ -218,7 +221,7 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
   };
 
   // ✅ FIX: Build productData đúng format trước khi gửi API
-  const buildProductData = (form: any) => mapFrontendToBackend({
+  const buildProductData = useCallback((form: any) => mapFrontendToBackend({
     ...form,
     price: parseFloat(form.price) || 0,
     tags: typeof form.tags === 'string'
@@ -228,7 +231,7 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
     imageUrls: parseImageUrls(form.imageUrls),
     downloadUrl: form.downloadUrl || null,
     demoUrl: form.demoUrl || null,
-  })
+  }), [parseImageUrls])
 
   // ✅ Thêm sản phẩm mới
   const addProduct = useCallback(async () => {
@@ -267,7 +270,7 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
     } finally {
       setIsLoading(false)
     }
-  }, [newProduct, products, setProducts])
+  }, [newProduct, products, setProducts, buildProductData, isLoading])
 
   // ✅ Sửa sản phẩm
   const saveEdit = useCallback(async () => {
@@ -324,7 +327,7 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
     } finally {
       setIsLoading(false)
     }
-  }, [editingProduct, products, setProducts])
+  }, [editingProduct, products, setProducts, buildProductData, isLoading])
 
   // ✅ Xóa sản phẩm
   const deleteProduct = useCallback(async (productId: string | number) => {
@@ -511,13 +514,27 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
           <div
             className="min-h-[200px] p-3 bg-gray-800/30 border border-gray-600/50 rounded-lg text-sm text-gray-200 prose prose-invert prose-sm max-w-none whitespace-pre-wrap"
             dangerouslySetInnerHTML={{
-              __html: (form.detailedDescription || '')
-                .replace(/\n/g, '<br/>')
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                .replace(/## (.*)/g, '<h2 class="text-lg font-bold mt-4 mb-2">$1</h2>')
-                .replace(/### (.*)/g, '<h3 class="text-base font-bold mt-3 mb-1">$1</h3>')
-                .replace(/- (.*)/g, '• $1')
+              __html: (() => {
+                const raw = form.detailedDescription || '';
+                let html = raw
+                  .replace(/\n/g, '<br/>')
+                  .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                  .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                  .replace(/## (.*)/g, '<h2 class="text-lg font-bold mt-4 mb-2">$1</h2>')
+                  .replace(/### (.*)/g, '<h3 class="text-base font-bold mt-3 mb-1">$1</h3>')
+                  .replace(/- (.*)/g, '• $1');
+                
+                // ✅ SECURITY FIX: Sanitize XSS payload trong Preview (VD: <img src=x onerror=alert(1)>)
+                try {
+                    const DOMPurify = require('isomorphic-dompurify');
+                    return DOMPurify.sanitize(html, {
+                        ALLOWED_TAGS: ['h1','h2','h3','h4','h5','h6','p','br','strong','em','b','i','u','a','ul','ol','li','img','blockquote','pre','code','table','thead','tbody','tr','th','td','hr','span','div'],
+                        ALLOWED_ATTR: ['href','src','alt','class','target','rel'],
+                    });
+                } catch {
+                    return html.replace(/<script[\s\S]*?<\/script>/gi, '');
+                }
+              })()
             }}
           />
         ) : (
@@ -562,15 +579,29 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
                      <div
                         className="prose prose-invert prose-sm xl:prose-base max-w-none text-gray-300 break-words whitespace-pre-wrap"
                         dangerouslySetInnerHTML={{
-                          __html: (form.detailedDescription || '')
-                            .replace(/\n/g, '<br/>')
-                            .replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>')
-                            .replace(/\*(.*?)\*/g, '<em class="text-gray-400">$1</em>')
-                            .replace(/## (.*)/g, '<h2 class="text-xl font-bold mt-6 mb-3 text-purple-300 border-b border-gray-800 pb-2">$1</h2>')
-                            .replace(/### (.*)/g, '<h3 class="text-lg font-bold mt-4 mb-2 text-purple-400">$1</h3>')
-                            .replace(/- (.*)/g, '<span class="text-purple-500 mr-2">•</span> $1')
-                            .replace(/`([^`]+)`/g, '<code class="bg-gray-800 text-pink-400 px-1.5 py-0.5 rounded text-sm font-mono">$1</code>')
-                            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-blue-400 hover:underline hover:text-blue-300">$1</a>')
+                          __html: (() => {
+                            const raw = form.detailedDescription || '';
+                            let html = raw
+                              .replace(/\n/g, '<br/>')
+                              .replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>')
+                              .replace(/\*(.*?)\*/g, '<em class="text-gray-400">$1</em>')
+                              .replace(/## (.*)/g, '<h2 class="text-xl font-bold mt-6 mb-3 text-purple-300 border-b border-gray-800 pb-2">$1</h2>')
+                              .replace(/### (.*)/g, '<h3 class="text-lg font-bold mt-4 mb-2 text-purple-400">$1</h3>')
+                              .replace(/- (.*)/g, '<span class="text-purple-500 mr-2">•</span> $1')
+                              .replace(/`([^`]+)`/g, '<code class="bg-gray-800 text-pink-400 px-1.5 py-0.5 rounded text-sm font-mono">$1</code>')
+                              .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-blue-400 hover:underline hover:text-blue-300">$1</a>');
+
+                            // ✅ SECURITY FIX: Sanitize XSS payload trong Khung soạn thảo Mở rộng
+                            try {
+                                const DOMPurify = require('isomorphic-dompurify');
+                                return DOMPurify.sanitize(html, {
+                                    ALLOWED_TAGS: ['h1','h2','h3','h4','h5','h6','p','br','strong','em','b','i','u','a','ul','ol','li','img','blockquote','pre','code','table','thead','tbody','tr','th','td','hr','span','div'],
+                                    ALLOWED_ATTR: ['href','src','alt','class','target','rel'],
+                                });
+                            } catch {
+                                return html.replace(/<script[\s\S]*?<\/script>/gi, '');
+                            }
+                          })()
                         }}
                      />
                    </div>
@@ -738,12 +769,14 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
                 {filteredProducts.map(product => (
                   <div key={product.id} className="group bg-gray-800/30 rounded-xl border border-gray-700/50 overflow-hidden hover:border-purple-500/50 transition-all">
                     <div className="relative h-36">
-                      <img
+                      <NextImage
                         src={product.imageUrl || '/placeholder.svg'}
                         alt={product.title}
+                        fill
+                        unoptimized
+                        sizes="(max-width: 1280px) 50vw, 33vw"
                         className="w-full h-full object-cover"
-                        onError={e => { (e.target as HTMLImageElement).src = '/placeholder.svg' }}
-                        loading="lazy"
+                        onError={e => { e.currentTarget.src = '/placeholder.svg' }}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-2 gap-2">
                         <button onClick={() => startEdit(product)} className="p-2 bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
@@ -772,12 +805,14 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
                   <div key={product.id} className="group">
                     <div className={`flex items-center gap-4 p-3 rounded-xl border transition-all ${expandedProduct === product.id ? 'bg-gray-800/60 border-purple-500/30' : 'bg-gray-800/20 border-gray-700/30 hover:border-gray-600/50 hover:bg-gray-800/40'}`}>
                       {/* Ảnh */}
-                      <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-gray-800/50">
-                        <img
+                      <div className="relative w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-gray-800/50">
+                        <NextImage
                           src={product.imageUrl || '/placeholder.svg'} alt={product.title}
+                          fill
+                          unoptimized
+                          sizes="56px"
                           className="w-full h-full object-cover"
-                          onError={e => { (e.target as HTMLImageElement).src = '/placeholder.svg' }}
-                          loading="lazy"
+                          onError={e => { e.currentTarget.src = '/placeholder.svg' }}
                         />
                       </div>
 
@@ -843,8 +878,16 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
                         {Array.isArray(product.imageUrls) && product.imageUrls.length > 0 && (
                           <div className="flex gap-2">
                             {product.imageUrls.slice(0, 4).map((url: string, i: number) => (
-                              <img key={i} src={url} className="w-12 h-12 rounded object-cover border border-gray-600/50"
-                                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                              <NextImage
+                                key={i}
+                                src={url}
+                                alt={`${product.title} thumbnail ${i + 1}`}
+                                width={48}
+                                height={48}
+                                unoptimized
+                                className="w-12 h-12 rounded object-cover border border-gray-600/50"
+                                onError={e => { e.currentTarget.style.display = 'none' }}
+                              />
                             ))}
                             {product.imageUrls.length > 4 && <div className="w-12 h-12 rounded bg-gray-700/50 flex items-center justify-center text-gray-400 text-xs">+{product.imageUrls.length - 4}</div>}
                           </div>

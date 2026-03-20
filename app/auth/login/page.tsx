@@ -35,6 +35,7 @@ function LoginPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { data: session, status } = useSession()
+  const isDevelopment = process.env.NODE_ENV === 'development'
   const [formData, setFormData] = useState({
     email: "",
     password: ""
@@ -105,7 +106,7 @@ function LoginPageContent() {
               uid: (session.user as any).id || `social_${Date.now()}`,
               email: session.user.email,
               name: session.user.name,
-              image: session.user.image,
+              avatarUrl: session.user.image,
               provider: (session.user as any).provider || 'google',
               ipAddress: ipAddress
             })
@@ -161,13 +162,22 @@ function LoginPageContent() {
       setError("");
       logger.debug(`Attempting ${provider} login`);
 
-      await signIn(provider, {
+      const result = await signIn(provider, {
         callbackUrl: '/dashboard',
         redirect: false  // Don't auto redirect, we'll handle it in useEffect
       });
 
-      // Note: signIn sẽ redirect tự động nếu success
-      // Nếu có lỗi, sẽ được handle trong useEffect với searchParams.error
+      if (result?.error) {
+        logger.error(`Social login error (${provider})`, { error: result.error });
+        setError(`Lỗi đăng nhập bằng ${provider}. Vui lòng thử lại.`);
+        setIsLoading(false);
+        return;
+      }
+
+      if (!result?.ok) {
+        setError(`Không thể đăng nhập bằng ${provider}.`);
+        setIsLoading(false);
+      }
     } catch (error: any) {
       logger.error(`Social login error (${provider})`, error);
       setError(`Lỗi đăng nhập bằng ${provider}. Vui lòng kiểm tra lại cấu hình OAuth.`);
@@ -210,8 +220,7 @@ function LoginPageContent() {
       }
 
       // Kiểm tra captcha (Bypass in development)
-      const isDev = process.env.NODE_ENV === 'development';
-      if (!isDev && !captchaToken) {
+      if (!isDevelopment && !captchaToken) {
         throw new Error("Vui lòng xác minh bạn không phải robot");
       }
 
@@ -404,7 +413,7 @@ function LoginPageContent() {
               <PowCaptcha onVerify={(token) => setCaptchaToken(token)} />
             </div>
 
-            <Button type="submit" className="w-full" disabled={isLoading || !captchaToken}>
+            <Button type="submit" className="w-full" disabled={isLoading || (!isDevelopment && !captchaToken)}>
               {isLoading ? (
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
               ) : (

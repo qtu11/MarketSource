@@ -212,19 +212,8 @@ export default function WithdrawPage() {
         return timeB - timeA;
       }));
     } catch (error) {
-      logger.error("Error loading withdrawals", error);
-      // Fallback to localStorage nếu API fail
-      try {
-        const allWithdrawals = getLocalStorage<Withdrawal[]>("withdrawals", []);
-        const userWithdrawals = allWithdrawals.filter((w) => w.userEmail === email);
-        setWithdrawals(userWithdrawals.sort((a, b) => {
-          const timeA = a.requestTime ? new Date(a.requestTime).getTime() : 0;
-          const timeB = b.requestTime ? new Date(b.requestTime).getTime() : 0;
-          return timeB - timeA;
-        }));
-      } catch (localError) {
-        logger.error("Error loading from localStorage", localError);
-      }
+      logger.error("Error loading withdrawals", error)
+      setWithdrawals([])
     }
   }
 
@@ -308,58 +297,13 @@ export default function WithdrawPage() {
 
         logger.debug('Withdrawal saved to PostgreSQL', { result });
       } catch (apiError: unknown) {
-        logger.error('API error, saving to localStorage as fallback', apiError);
-        
-        // Fallback: Save to localStorage nếu API fail
-        withdrawRequest = {
-          id: Date.now(),
-          userId: user.uid || user.id,
-          userEmail: user.email || null,
-          userName: user.name || null,
-          bankId: selectedBank.id,
-          bankName: selectedBank.name,
-          bankShortName: selectedBank.shortName,
-          accountNumber: withdrawData.accountNumber,
-          accountName: withdrawData.accountName,
-          amount: withdrawAmount,
-          requestTime: timestamp,
-          requestTimeFormatted: new Date(timestamp).toLocaleString("vi-VN"),
-          ipAddress: ipAddress,
-          deviceInfo: deviceInfo,
-          userAgent: navigator.userAgent,
-          status: "pending",
-          approvedBy: null,
-          approvedTime: null,
-          processed: false,
-          created_at: timestamp
-        };
-
-        const allWithdrawals = getLocalStorage<Withdrawal[]>("withdrawals", []);
-        allWithdrawals.push(withdrawRequest as Withdrawal);
-        setLocalStorage("withdrawals", allWithdrawals);
-
-        const pendingWithdrawals = getLocalStorage<Withdrawal[]>("pendingWithdrawals", []);
-        pendingWithdrawals.push(withdrawRequest as Withdrawal);
-        setLocalStorage("pendingWithdrawals", pendingWithdrawals);
+        // ✅ FIX: API fail = thất bại thật, KHÔNG fallback sang localStorage
+        logger.error('Withdrawal API error', apiError);
+        throw apiError instanceof Error ? apiError : new Error('Không thể kết nối server. Vui lòng thử lại sau.');
       }
-
-      // Send notification to admin
-      const notifications = getLocalStorage<Array<Record<string, unknown>>>("notifications", []);
-      notifications.push({
-        id: Date.now(),
-        type: "withdrawal_request",
-        title: "Yêu cầu rút tiền mới",
-        message: `${user.name} yêu cầu rút ${withdrawAmount.toLocaleString("vi-VN")}đ qua ${selectedBank.shortName}`,
-        user: { email: user.email, name: user.name },
-        timestamp: timestamp,
-        read: false,
-        withdrawalInfo: withdrawRequest
-      });
-      setLocalStorage("notifications", notifications);
 
       // Dispatch events for real-time updates
       window.dispatchEvent(new Event("withdrawalsUpdated"))
-      window.dispatchEvent(new Event("notificationsUpdated"))
 
       // Reset form
       setWithdrawData({

@@ -75,24 +75,7 @@ export async function POST(request: NextRequest) {
     const safeCategory = validCategories.includes(category) ? category : 'other'
     const safePriority = validPriorities.includes(priority) ? priority : 'medium'
 
-    // Tạo bảng nếu chưa có (idempotent)
-    await query(
-      `CREATE TABLE IF NOT EXISTS support_tickets (
-        id BIGINT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NOT NULL,
-        subject VARCHAR(255) NOT NULL,
-        category VARCHAR(50) NOT NULL DEFAULT 'other',
-        priority VARCHAR(50) NOT NULL DEFAULT 'medium',
-        message TEXT NOT NULL,
-        status VARCHAR(50) NOT NULL DEFAULT 'open',
-        admin_reply TEXT,
-        admin_replied_at DATETIME,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      )`,
-      []
-    )
+    // ✅ FIX: Schema managed via migration, remove CREATE TABLE runtime
 
     const result = await query<any>(
       `INSERT INTO support_tickets (user_id, subject, category, priority, message, status)
