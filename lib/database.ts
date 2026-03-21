@@ -1297,6 +1297,36 @@ export async function createWithdrawal(withdrawalData: {
       throw new Error('Insufficient balance');
     }
 
+    // ✅ FIX BUG #5: Per-transaction & daily withdrawal limits
+    const MAX_WITHDRAWAL_PER_TRANSACTION = 10_000_000; // 10M VND
+    const DAILY_WITHDRAWAL_LIMIT = 50_000_000; // 50M VND
+
+    if (withdrawalData.amount > MAX_WITHDRAWAL_PER_TRANSACTION) {
+      throw new Error(
+        `Số tiền rút tối đa mỗi lần là ${MAX_WITHDRAWAL_PER_TRANSACTION.toLocaleString('vi-VN')}đ`
+      );
+    }
+
+    // Check daily total (last 24h approved + pending withdrawals)
+    const dailyTotal = await client.query(
+      `SELECT COALESCE(SUM(amount), 0) as total
+       FROM withdrawals
+       WHERE user_id = $1
+         AND status IN ('pending', 'approved')
+         AND created_at >= CURRENT_TIMESTAMP - INTERVAL '24 hours'`,
+      [dbUserId]
+    );
+    const todayTotal = parseFloat(dailyTotal.rows[0].total || '0');
+
+    if (todayTotal + withdrawalData.amount > DAILY_WITHDRAWAL_LIMIT) {
+      const remaining = Math.max(0, DAILY_WITHDRAWAL_LIMIT - todayTotal);
+      throw new Error(
+        `Vượt giới hạn rút tiền trong ngày (${DAILY_WITHDRAWAL_LIMIT.toLocaleString('vi-VN')}đ). ` +
+        `Đã rút hôm nay: ${todayTotal.toLocaleString('vi-VN')}đ. ` +
+        `Còn lại: ${remaining.toLocaleString('vi-VN')}đ`
+      );
+    }
+
     // 2. Check pending withdrawal
     const pendingWithdrawals = await client.query(
       'SELECT id FROM withdrawals WHERE user_id = $1 AND status = $2',
@@ -1646,7 +1676,12 @@ export async function processReferralCommission(
 
     const ref = refRes.rows[0];
     const pct = parseFloat(String(ref.commission_percent ?? 10));
-    const commission = Math.round(purchaseAmount * (pct / 100) * 100) / 100;
+    let commission = Math.round(purchaseAmount * (pct / 100) * 100) / 100;
+
+    // ✅ FIX BUG #4: Cap commission per transaction (fraud prevention)
+    const MAX_COMMISSION_PER_TRANSACTION = 500000; // 500,000 VND
+    commission = Math.min(commission, MAX_COMMISSION_PER_TRANSACTION);
+
     if (commission <= 0) return null;
 
     await client.query(
