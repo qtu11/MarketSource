@@ -1,3 +1,20 @@
+/**
+ * ============================================================
+ * DATABASE CONFIGURATION — PostgreSQL ONLY
+ *
+ * ✅ Driver:   pg (node-postgres)
+ * ❌ Không sử dụng: MySQL / mysql2
+ *
+ * Connection hierarchy:
+ *   1. DATABASE_URL (Supabase, Vercel, production)
+ *   2. NETLIFY_DATABASE_URL (Netlify specific)
+ *   3. DB_HOST + DB_USER + DB_PASSWORD + DB_NAME (self-hosted)
+ *
+ * Ports:
+ *   - 5432: Direct connection
+ *   - 6543: Session Pooler (IPv4 compatibility)
+ * ============================================================
+ */
 import { Pool, PoolClient } from 'pg';
 import { logger } from './logger';
 
@@ -22,15 +39,29 @@ const isBuildTime = isNextBuildPhase || isStaticExportPhase || process.env.DOCKE
 // Detect serverless environment
 const isServerless = isNetlify || process.env.VERCEL === '1' || process.env.AWS_LAMBDA_FUNCTION_NAME;
 
-// Thêm function để validate database connection
+// Validate database connection config
 function validateDatabaseConfig() {
-  if (!process.env.DATABASE_URL && !process.env.DB_PASSWORD) {
+  const hasDatabaseUrl = !!(
+    process.env.DATABASE_URL ||
+    process.env.NETLIFY_DATABASE_URL
+  );
+
+  const hasDbVars = !!(
+    process.env.DB_HOST &&
+    process.env.DB_USER &&
+    process.env.DB_PASSWORD
+  );
+
+  if (!hasDatabaseUrl && !hasDbVars) {
     if (isServerless || shouldSkipDbTest || isBuildTime) {
-      // Trong serverless/build, log warning nhưng không throw để build không fail
-      logger.warn('Database configuration missing. Skipping PostgreSQL connection initialization during build/serverless environment.');
+      logger.warn('Database configuration missing (build/serverless environment)');
       return false;
     }
-    throw new Error('Database configuration is required. Please set DATABASE_URL or DB_* environment variables.');
+    throw new Error(
+      'Database configuration required. Either set:\n' +
+      '  1. DATABASE_URL (or NETLIFY_DATABASE_URL), or\n' +
+      '  2. DB_HOST, DB_USER, DB_PASSWORD, DB_NAME'
+    );
   }
   return true;
 }
@@ -274,6 +305,8 @@ export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>)
 
 /**
  * Atomically updates user balance with validation.
+ * ✅ FIX: Uses SQL arithmetic (balance + $1) instead of JS float math
+ * to prevent DECIMAL precision loss.
  */
 export async function updateBalance(
   userId: number,
@@ -287,7 +320,7 @@ export async function updateBalance(
     // Lock row if in transaction
     const lockQuery = client ? ' FOR UPDATE' : '';
     
-    // Get current balance
+    // Get current balance (for validation only)
     const userRes = await poolOrClient.query(
       `SELECT balance FROM users WHERE id = $1${lockQuery}`,
       [userId]
@@ -298,22 +331,29 @@ export async function updateBalance(
     }
     
     const currentBalance = parseFloat(userRes.rows[0].balance || '0');
-    let newBalance = currentBalance;
     
-    if (type === 'increase') {
-      newBalance += amount;
-    } else {
-      if (currentBalance < amount) {
-        throw new Error(`Insufficient balance. Current: ${currentBalance}, Required: ${amount}`);
-      }
-      newBalance -= amount;
+    if (type === 'decrease' && currentBalance < amount) {
+      throw new Error(`Insufficient balance. Current: ${currentBalance}, Required: ${amount}`);
     }
     
-    await poolOrClient.query(
-      'UPDATE users SET balance = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [newBalance, userId]
-    );
+    // ✅ FIX: Use SQL arithmetic to avoid JS float precision loss
+    let updateResult;
+    if (type === 'increase') {
+      updateResult = await poolOrClient.query(
+        'UPDATE users SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING balance',
+        [amount, userId]
+      );
+    } else {
+      updateResult = await poolOrClient.query(
+        'UPDATE users SET balance = balance - $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND balance >= $1 RETURNING balance',
+        [amount, userId]
+      );
+      if (updateResult.rows.length === 0) {
+        throw new Error(`Insufficient balance for atomic update.`);
+      }
+    }
     
+    const newBalance = parseFloat(updateResult.rows[0].balance);
     return { success: true, newBalance };
   } catch (error) {
     logger.error('Error updating balance', error, { userId, amount, type });
@@ -356,9 +396,20 @@ export async function queryWithRetry<T = any>(
   throw lastError || new Error('Query failed after retries');
 }
 
+const QUERY_TIMEOUT_MS = 30000; // 30 seconds
+
 export async function query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
   try {
-    const result = await pool.query(sql, params);
+    // ✅ FIX: Add timeout to prevent hanging queries
+    const result = await Promise.race([
+      pool.query(sql, params),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`Query timeout after ${QUERY_TIMEOUT_MS}ms: ${sql.substring(0, 50)}...`)),
+          QUERY_TIMEOUT_MS
+        )
+      )
+    ]);
     return result.rows as T[];
   } catch (error: any) {
     logger.error('PostgreSQL query error', error, { sql: sql.substring(0, 100) });
@@ -966,6 +1017,19 @@ export async function createDeposit(depositData: {
   userName?: string;
 }) {
   try {
+    // ✅ FIX: Validate amount
+    const amount = Number(depositData.amount);
+    if (isNaN(amount) || amount <= 0) {
+      throw new Error('Deposit amount must be a positive number');
+    }
+
+    // ✅ FIX: Validate method
+    const validMethods = ['bank_transfer', 'e_wallet', 'card', 'crypto', 'momo', 'zalopay', 'vnpay'];
+    if (depositData.method && !validMethods.includes(depositData.method)) {
+      logger.warn('Unknown deposit method', { method: depositData.method });
+      // Không throw — cho phép custom methods nhưng log warning
+    }
+
     const dbUserId = await normalizeUserId(depositData.userId, depositData.userEmail);
 
     if (!dbUserId) {
@@ -1126,9 +1190,6 @@ export async function approveDepositAndUpdateBalance(
       throw new Error('User not found');
     }
 
-    const currentBalance = parseFloat(userResult.rows[0].balance || '0');
-    const newBalance = currentBalance + amount;
-
     // Update deposit status
     await client.query(
       `UPDATE deposits 
@@ -1139,11 +1200,13 @@ export async function approveDepositAndUpdateBalance(
       [approvedBy, depositId]
     );
 
-    // Update user balance
-    await client.query(
-      'UPDATE users SET balance = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [newBalance, userId]
+    // ✅ FIX: Use SQL arithmetic to avoid JS float precision loss
+    const updateResult = await client.query(
+      'UPDATE users SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING balance',
+      [amount, userId]
     );
+
+    const newBalance = parseFloat(updateResult.rows[0].balance);
 
     await client.query('COMMIT');
 

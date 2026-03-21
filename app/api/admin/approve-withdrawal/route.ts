@@ -243,6 +243,31 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     const { createErrorResponse, logError } = await import('@/lib/error-handler');
     logError('Error processing withdrawal approval', error);
+
+    // ✅ FIX: Differentiate error types
+    const errMsg = error instanceof Error ? error.message : String(error);
+
+    if (errMsg.includes('User ID mismatch') || errMsg.includes('Amount mismatch') || errMsg.includes('Insufficient balance')) {
+      return NextResponse.json(
+        { success: false, error: errMsg },
+        { status: 400 }
+      );
+    }
+
+    if (errMsg.includes('already been approved') || errMsg.includes('already been processed')) {
+      return NextResponse.json(
+        { success: false, error: errMsg },
+        { status: 409 }
+      );
+    }
+
+    if ((error as any)?.code === 'ENOTFOUND' || (error as any)?.code === 'ECONNREFUSED') {
+      return NextResponse.json(
+        { success: false, error: 'Database connection failed' },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
       createErrorResponse(error, 500),
       { status: 500 }
