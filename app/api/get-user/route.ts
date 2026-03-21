@@ -46,12 +46,20 @@ export async function GET(request: NextRequest) {
       const uidStr = String(uid);
       const uidAsNum = parseInt(uidStr, 10);
       const authDbId = authUser.email ? await getUserIdByEmail(authUser.email) : null;
+      
+      // ✅ FIX: Force Number type comparison because authDbId might be string from PostgreSQL BIGSERIAL
       const sameNumericId =
-        !Number.isNaN(uidAsNum) && authDbId !== null && authDbId === uidAsNum;
+        !Number.isNaN(uidAsNum) && authDbId !== null && Number(authDbId) === uidAsNum;
+      
       const sameProviderUid = authUser.uid === uidStr;
+      
       const sameEmail =
         !!authUser.email && authUser.email.toLowerCase() === uidStr.toLowerCase();
-      if (!sameNumericId && !sameProviderUid && !sameEmail) {
+        
+      // ✅ FIX: Allow prefix "email_123" matching since fallback auth defines uid this way
+      const samePrefixedId = authDbId !== null && uidStr === `email_${authDbId}`;
+      
+      if (!sameNumericId && !sameProviderUid && !sameEmail && !samePrefixedId) {
         return NextResponse.json(
           { error: 'Unauthorized: Can only access your own data' },
           { status: 403 }

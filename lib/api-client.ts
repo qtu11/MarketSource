@@ -279,6 +279,22 @@ export async function apiRequest(
       const errorData = await response.json().catch(() => ({}));
       const errorMessage = errorData.error || errorData.message || response.statusText || `Lỗi ${response.status}`;
 
+      // ✅ FIX: Auto-retry for CSRF token mismatch
+      if (response.status === 403 && (errorMessage.includes('CSRF') || errorMessage.includes('token'))) {
+        try {
+          const { clearCsrfClientCache } = await import('@/lib/csrf-client');
+          clearCsrfClientCache();
+          
+          // Prevent infinite retry by attaching a flag
+          if (!(options as any)._csrfRetried) {
+            logger.info('Retrying request after CSRF token refresh', { endpoint });
+            return await apiRequest(endpoint, { ...options, _csrfRetried: true } as RequestInit);
+          }
+        } catch (e) {
+          logger.warn('Failed to retry CSRF request', { error: e });
+        }
+      }
+
       // ✅ BUG #32: Hiển thị thông báo lỗi lỗi nếu không ở chế độ silent
       if (typeof window !== 'undefined' && !options.silent) {
         toast.error(`Lỗi API: ${errorMessage}`, {

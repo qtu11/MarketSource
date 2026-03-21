@@ -113,6 +113,7 @@ export async function saveNotification(notificationData: any): Promise<any> {
   try {
     const result = await apiPost('/api/save-notification', {
       userId: notificationData.userId || notificationData.user_id,
+      userEmail: notificationData.userEmail || notificationData.user_email,
       title: notificationData.title || 'Thông báo',
       message: notificationData.message || notificationData.content || '',
       type: notificationData.type || 'system',

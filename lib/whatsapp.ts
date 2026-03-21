@@ -46,9 +46,8 @@ export async function sendWhatsAppMessage({ to, body }: SendWhatsAppParams) {
     const details = await response.text();
     const error = new Error(`Twilio API error: ${response.status} ${response.statusText} - ${details}`);
     logger.error('WhatsApp send failed', error);
-    throw error;
+    return null; // ✅ FIX: Trả về null thay vì throw Error để không làm sập flow chính (vd: tạo deposit)
   }
 
   return response.json() as Promise<unknown>;
 }
-

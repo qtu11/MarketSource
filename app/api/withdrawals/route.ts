@@ -135,6 +135,8 @@ export async function POST(request: NextRequest): Promise<Response> {
       accountName: withdrawalData.accountName,
       userEmail: authUser.email || undefined,
       idempotencyKey: withdrawalData.idempotencyKey?.trim() || undefined,
+      ipAddress: withdrawalData.ipAddress,
+      deviceInfo: withdrawalData.deviceInfo,
     });
 
     // Get the created withdrawal để trả về đầy đủ thông tin

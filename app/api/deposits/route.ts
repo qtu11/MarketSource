@@ -139,7 +139,9 @@ export async function POST(request: NextRequest): Promise<Response> {
       method: depositData.method,
       transactionId: effectiveTxnId,
       userEmail: authUser.email || undefined,
-      userName: undefined
+      userName: undefined,
+      ipAddress: depositData.ipAddress,
+      deviceInfo: depositData.deviceInfo
     });
 
     const depositRow = await queryOne<any>(

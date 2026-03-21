@@ -67,7 +67,8 @@ export function csrfProtection(request: NextRequest): { valid: boolean; error?: 
   if (!verifyCSRFToken(csrfToken, csrfCookie)) {
     if (process.env.NODE_ENV === 'development') {
       const { logger } = require('@/lib/logger');
-      logger.error('Invalid CSRF token', { csrfToken, csrfCookie });
+      // ✅ FIX: Truyền null/Error cho param 2, context cho param 3 để in string hợp lệ thay vì [object Object]
+      logger.error('Invalid CSRF token sequence', new Error('Mismatch'), { csrfToken, csrfCookie });
     }
     return { valid: false, error: 'Invalid CSRF token' };
   }

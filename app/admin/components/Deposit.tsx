@@ -102,10 +102,10 @@ export function Deposit({
                         🕐 Thời gian: {deposit.requestTimeFormatted}
                       </p>
                       <p className="text-xs text-blue-600">
-                        🌐 IP: {deposit.ipAddress || 'Unknown'}
+                        🌐 IP: {deposit.ipAddress || deposit.ip_address || 'Unknown'}
                       </p>
                       <p className="text-xs text-blue-600">
-                        📱 Thiết bị: {deposit.deviceInfo?.deviceType || 'Unknown'} ({deposit.deviceInfo?.browser || 'Unknown'})
+                        📱 Thiết bị: {deposit.deviceInfo?.deviceType || deposit.device_info?.deviceType || 'Unknown'} ({deposit.deviceInfo?.browser || deposit.device_info?.browser || 'Unknown'})
                       </p>
                       {deposit.note && (
                         <p className="text-xs text-gray-700 bg-gray-100 dark:bg-gray-700 p-2 rounded shadow-sm">

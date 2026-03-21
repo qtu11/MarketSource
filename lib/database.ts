@@ -1017,6 +1017,8 @@ export async function createDeposit(depositData: {
   transactionId: string;
   userEmail?: string;
   userName?: string;
+  ipAddress?: string;
+  deviceInfo?: any;
 }) {
   try {
     // ✅ FIX: Validate amount
@@ -1057,11 +1059,14 @@ export async function createDeposit(depositData: {
     }
 
     // Insert với hoặc không có transaction_id tùy theo schema
+    const ipAddress = depositData.ipAddress || null;
+    const deviceInfo = depositData.deviceInfo ? JSON.stringify(depositData.deviceInfo) : null;
+
     let result;
     if (hasTransactionId) {
       result = await pool.query(
-        `INSERT INTO deposits (user_id, amount, method, transaction_id, user_email, user_name, status)
-         VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+        `INSERT INTO deposits (user_id, amount, method, transaction_id, user_email, user_name, status, ip_address, device_info)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)
          RETURNING id, timestamp`,
         [
           dbUserId,
@@ -1070,13 +1075,15 @@ export async function createDeposit(depositData: {
           depositData.transactionId || null,
           depositData.userEmail || null,
           depositData.userName || null,
+          ipAddress,
+          deviceInfo
         ]
       );
     } else {
       // Schema không có transaction_id, chỉ insert các cột cơ bản
       result = await pool.query(
-        `INSERT INTO deposits (user_id, amount, method, user_email, user_name, status)
-         VALUES ($1, $2, $3, $4, $5, 'pending')
+        `INSERT INTO deposits (user_id, amount, method, user_email, user_name, status, ip_address, device_info)
+         VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7)
          RETURNING id, timestamp`,
         [
           dbUserId,
@@ -1084,6 +1091,8 @@ export async function createDeposit(depositData: {
           depositData.method,
           depositData.userEmail || null,
           depositData.userName || null,
+          ipAddress,
+          deviceInfo
         ]
       );
     }
@@ -1261,6 +1270,8 @@ export async function createWithdrawal(withdrawalData: {
   accountName: string;
   userEmail?: string;
   idempotencyKey?: string | null;
+  ipAddress?: string;
+  deviceInfo?: any;
 }) {
   // ✅ FIX: Validate amount trước khi vào transaction
   const WITHDRAWAL_MIN = 5_000; // 5,000 VND minimum
@@ -1369,15 +1380,18 @@ export async function createWithdrawal(withdrawalData: {
 
     // 4. Tạo bản ghi rút tiền
     const hasIdem = Boolean(idem);
+    const ipAddress = withdrawalData.ipAddress || null;
+    const deviceInfo = withdrawalData.deviceInfo ? JSON.stringify(withdrawalData.deviceInfo) : null;
+    
     let result;
     try {
       result = await client.query(
         hasIdem
-          ? `INSERT INTO withdrawals (user_id, amount, bank_name, account_number, account_name, user_email, status, idempotency_key)
-             VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)
+          ? `INSERT INTO withdrawals (user_id, amount, bank_name, account_number, account_name, user_email, status, idempotency_key, ip_address, device_info)
+             VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, $9)
              RETURNING id, created_at`
-          : `INSERT INTO withdrawals (user_id, amount, bank_name, account_number, account_name, user_email, status)
-             VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+          : `INSERT INTO withdrawals (user_id, amount, bank_name, account_number, account_name, user_email, status, ip_address, device_info)
+             VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)
              RETURNING id, created_at`,
         hasIdem
           ? [
@@ -1388,6 +1402,8 @@ export async function createWithdrawal(withdrawalData: {
             withdrawalData.accountName,
             withdrawalData.userEmail || null,
             idem,
+            ipAddress,
+            deviceInfo
           ]
           : [
             dbUserId,
@@ -1396,6 +1412,8 @@ export async function createWithdrawal(withdrawalData: {
             withdrawalData.accountNumber,
             withdrawalData.accountName,
             withdrawalData.userEmail || null,
+            ipAddress,
+            deviceInfo
           ]
       );
     } catch (e: any) {

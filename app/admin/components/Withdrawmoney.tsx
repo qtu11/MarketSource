@@ -99,19 +99,19 @@ export function Withdrawmoney({
 
                       <div className="space-y-1 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
                         <p className="text-sm">
-                          <strong>🏦 Ngân hàng:</strong> {withdrawal.bankInfo?.name || withdrawal.method}
+                          <strong>🏦 Ngân hàng:</strong> {withdrawal.bank_name || withdrawal.bankName || withdrawal.bankInfo?.name || withdrawal.method || 'N/A'}
                         </p>
                         <p className="text-sm">
-                          <strong>📋 STK/SĐT:</strong> {withdrawal.bankInfo?.accountNumber || 'N/A'}
+                          <strong>📋 STK/SĐT:</strong> {withdrawal.account_number || withdrawal.accountNumber || withdrawal.bankInfo?.accountNumber || 'N/A'}
                         </p>
                         <p className="text-sm">
-                          <strong>👤 Tên TK:</strong> {withdrawal.bankInfo?.accountName || 'N/A'}
+                          <strong>👤 Tên TK:</strong> {withdrawal.account_name || withdrawal.accountName || withdrawal.bankInfo?.accountName || 'N/A'}
                         </p>
                         <p className="text-xs text-blue-600">
-                          🌐 IP: {withdrawal.ipAddress || 'Unknown'}
+                          🌐 IP: {withdrawal.ipAddress || withdrawal.ip_address || 'Unknown'}
                         </p>
                         <p className="text-xs text-blue-600">
-                          📱 Thiết bị: {withdrawal.deviceInfo?.deviceType || 'Unknown'} ({withdrawal.deviceInfo?.browser || 'Unknown'})
+                          📱 Thiết bị: {withdrawal.deviceInfo?.deviceType || withdrawal.device_info?.deviceType || 'Unknown'} ({withdrawal.deviceInfo?.browser || withdrawal.device_info?.browser || 'Unknown'})
                         </p>
                       </div>
                       <div className="mt-2">
@@ -136,7 +136,7 @@ export function Withdrawmoney({
                           -{withdrawal.amount.toLocaleString('vi-VN')}đ
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          Nhận thực tế: {(withdrawal.receiveAmount || Math.round(withdrawal.amount * 0.95)).toLocaleString('vi-VN')}đ (phí 5%)
+                          Nhận thực tế: {withdrawal.amount.toLocaleString('vi-VN')}đ (Miễn phí)
                         </p>
                         <Badge className={
                           withdrawal.status === "pending" ? "bg-yellow-500 text-white shadow-md" :

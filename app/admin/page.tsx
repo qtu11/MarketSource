@@ -758,9 +758,11 @@ function AdminPageContent() {
         });
 
         await saveNotification({
+          userId: deposit.user_id || deposit.userId,
+          userEmail: deposit.userEmail || deposit.user_email,
           type: "deposit_approved",
           title: "Nạp tiền đã được duyệt",
-          message: telegramMessage,
+          message: `Giao dịch ${deposit.transactionId} số tiền ${deposit.amount.toLocaleString('vi-VN')}đ đã được duyệt bằng Admin Panel.`,
           user: { email: deposit.userEmail, name: deposit.userName },
           admin: { email: adminUser.email, name: adminUser.name, loginTime: adminUser.loginTime },
           timestamp: new Date().toISOString(),
@@ -959,7 +961,7 @@ function AdminPageContent() {
 👤 <b>Khách hàng:</b> ${withdrawal.userName}
 📧 <b>Email:</b> ${withdrawal.userEmail}
 💰 <b>Số tiền rút:</b> ${withdrawal.amount.toLocaleString('vi-VN')}đ
-💵 <b>Nhận thực tế:</b> ${(withdrawal.amount * 0.95).toLocaleString('vi-VN')}đ
+💵 <b>Nhận thực tế:</b> ${withdrawal.amount.toLocaleString('vi-VN')}đ (Miễn phí)
 🏦 <b>Ngân hàng:</b> ${withdrawal.bankName}
 📝 <b>STK:</b> ${withdrawal.accountNumber}
 👨‍💼 <b>Tên TK:</b> ${withdrawal.accountName}
@@ -980,6 +982,8 @@ function AdminPageContent() {
         });
 
         await saveNotification({
+          userId: withdrawal.user_id || withdrawal.userId,
+          userEmail: withdrawal.userEmail || withdrawal.user_email,
           type: "withdrawal_approved",
           title: "Rút tiền đã được duyệt",
           message: telegramMessage,
@@ -1131,6 +1135,8 @@ function AdminPageContent() {
 
       // Log balance change for audit trail
       await saveNotification({
+        userId: targetUserData.uid || targetUserData.id,
+        userEmail: targetUserData.email,
         type: "balance_updated",
         title: "Số dư được cập nhật",
         message: `Admin ${adminUser.email} đã cập nhật số dư cho ${targetUserData.name || targetUserData.displayName || targetUserData.email} từ ${(targetUserData.balance || 0).toLocaleString('vi-VN')}đ thành ${newBalance.toLocaleString('vi-VN')}đ`,
@@ -1190,6 +1196,8 @@ function AdminPageContent() {
 
       if (response.ok) {
         await saveNotification({
+          userId: adminUser.uid || adminUser.id,
+          userEmail: adminUser.email,
           type: "test_notification",
           title: "Test Telegram Notification",
           message: testMessage,
@@ -1727,7 +1735,7 @@ Hệ thống thông báo đang hoạt động bình thường.`
           <div className="flex items-center gap-3 px-2">
             <Logo />
             <div className="space-y-0.5">
-              <p className="text-sm font-semibold text-slate-100">Healthy Admin</p>
+              <p className="text-sm font-semibold text-slate-100">Admin</p>
               <p className="text-[11px] text-slate-400">Control center</p>
             </div>
           </div>

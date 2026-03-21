@@ -172,6 +172,9 @@ export function User({ users, updateUserStatus, updateUserBalance }: UserProps) 
                             Địa chỉ IP: {user.ipAddress || user.ip || user.ip_address || "Không có dữ liệu"}
                           </p>
                           <p className="text-xs text-muted-foreground">
+                            Thiết bị: {user.deviceInfo?.deviceType || user.device_info?.deviceType || "Không rõ"} ({user.deviceInfo?.browser || user.device_info?.browser || "Unknown browser"})
+                          </p>
+                          <p className="text-xs text-muted-foreground">
                             Hoạt động gần nhất: {user.lastActivity ? new Date(user.lastActivity).toLocaleString('vi-VN') : "Không có dữ liệu"}
                           </p>
                           <p className="text-xs text-muted-foreground">

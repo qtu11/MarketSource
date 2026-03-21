@@ -14,21 +14,16 @@ export async function POST(request: NextRequest) {
     const notificationData = await request.json();
     
     // ✅ FIX: Dùng database.ts thay vì mysql.ts
-    // ✅ FIX: Normalize userId - cần convert sang number nếu là string
-    let userId: number;
-    if (typeof notificationData.userId === 'number') {
-      userId = notificationData.userId;
-    } else if (typeof notificationData.user_id === 'number') {
-      userId = notificationData.user_id;
-    } else {
-      // Nếu là string (Firebase UID), cần convert sang DB ID
-      const { getUserIdByEmail } = await import('@/lib/database');
-      const normalizedUserId = await getUserIdByEmail(notificationData.userEmail || '');
-      if (!normalizedUserId) {
-        return NextResponse.json({ error: 'User not found' }, { status: 404 });
-      }
-      userId = normalizedUserId;
+    // ✅ FIX: Normalize userId - sử dụng chuẩn hàm normalizeUserId
+    const rawUserId = notificationData.userId || notificationData.user_id;
+    const { normalizeUserId } = await import('@/lib/database');
+    const dbUserId = await normalizeUserId(rawUserId, notificationData.userEmail);
+    
+    if (!dbUserId) {
+      return NextResponse.json({ error: 'User not found in database. Please ensure user account is synchronized.' }, { status: 404 });
     }
+    
+    let userId = dbUserId;
     
     const result = await createNotification({
       userId: userId,

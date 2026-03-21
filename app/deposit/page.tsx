@@ -224,31 +224,43 @@ export default function DepositPage() {
 
   // ==================== USER LOADING ====================
   useEffect(() => {
+    let refreshInterval: NodeJS.Timeout;
+
     const checkAndLoadUser = async () => {
       const { userManager } = await import('@/lib/userManager')
       if (!userManager.isLoggedIn()) {
         router.push("/auth/login?returnUrl=/deposit")
         return
       }
-      const userData = await userManager.getUser()
-      if (userData) {
-        const mappedUser: User = {
-          ...userData,
-          id: Number((userData as any).id || 0),
-          uid: userData.uid || '',
-          email: userData.email || '',
-          name: userData.name || (userData as any).displayName || null,
-          username: (userData as any).username || (userData as any).displayName || null,
-          role: (userData as any).role || 'user',
-          status: (userData as any).status || 'active',
-          balance: Number(userData.balance || 0),
-          loginCount: Number((userData as any).loginCount || 0),
-          created_at: (userData as any).created_at || new Date().toISOString(),
-          updated_at: (userData as any).updated_at || new Date().toISOString(),
-        } as User
+      
+      const baseUser = await userManager.getUser()
+      if (baseUser && (baseUser.uid || baseUser.email)) {
+        const fetchFreshData = async () => {
+          const freshUser = await userManager.getUserData(baseUser.uid || baseUser.email || '');
+          const dataToUse = freshUser || baseUser;
+          
+          const mappedUser: User = {
+            ...dataToUse,
+            id: Number((dataToUse as any).id || 0),
+            uid: dataToUse.uid || '',
+            email: dataToUse.email || '',
+            name: dataToUse.name || (dataToUse as any).displayName || null,
+            username: (dataToUse as any).username || (dataToUse as any).displayName || null,
+            role: (dataToUse as any).role || 'user',
+            status: (dataToUse as any).status || 'active',
+            balance: Number(dataToUse.balance || 0),
+            loginCount: Number((dataToUse as any).loginCount || 0),
+            created_at: (dataToUse as any).created_at || new Date().toISOString(),
+            updated_at: (dataToUse as any).updated_at || new Date().toISOString(),
+          } as User
 
-        setUser(mappedUser)
-        loadUserDeposits(userData.email || '')
+          setUser(mappedUser)
+        };
+
+        await fetchFreshData();
+        loadUserDeposits(baseUser.email || '')
+        
+        refreshInterval = setInterval(fetchFreshData, 5000);
       } else {
         router.push("/auth/login?returnUrl=/deposit")
       }
@@ -257,35 +269,33 @@ export default function DepositPage() {
 
     const handleUserUpdate = async () => {
       const { userManager } = await import('@/lib/userManager')
-      const updatedUser = await userManager.getUser()
-      if (updatedUser) {
+      const baseUser = await userManager.getUser()
+      if (baseUser && (baseUser.uid || baseUser.email)) {
+        const freshUser = await userManager.getUserData(baseUser.uid || baseUser.email || '');
+        const dataToUse = freshUser || baseUser;
         const mappedUser: User = {
-          ...updatedUser,
-          id: Number((updatedUser as any).id || 0),
-          uid: updatedUser.uid || '',
-          email: updatedUser.email || '',
-          name: updatedUser.name || (updatedUser as any).displayName || null,
-          username: (updatedUser as any).username || (updatedUser as any).displayName || null,
-          role: (updatedUser as any).role || 'user',
-          status: (updatedUser as any).status || 'active',
-          balance: Number(updatedUser.balance || 0),
-          loginCount: Number((updatedUser as any).loginCount || 0),
-          created_at: (updatedUser as any).created_at || new Date().toISOString(),
-          updated_at: (updatedUser as any).updated_at || new Date().toISOString(),
+          ...dataToUse,
+          id: Number((dataToUse as any).id || 0),
+          uid: dataToUse.uid || '',
+          email: dataToUse.email || '',
+          name: dataToUse.name || (dataToUse as any).displayName || null,
+          username: (dataToUse as any).username || (dataToUse as any).displayName || null,
+          role: (dataToUse as any).role || 'user',
+          status: (dataToUse as any).status || 'active',
+          balance: Number(dataToUse.balance || 0),
+          loginCount: Number((dataToUse as any).loginCount || 0),
+          created_at: (dataToUse as any).created_at || new Date().toISOString(),
+          updated_at: (dataToUse as any).updated_at || new Date().toISOString(),
         } as User
         setUser(mappedUser)
-        loadUserDeposits(updatedUser.email || '')
+        loadUserDeposits(baseUser.email || '')
       }
     }
     window.addEventListener("userUpdated", handleUserUpdate)
 
-    const refreshInterval = setInterval(() => {
-      if (user?.email) loadUserDeposits(user.email)
-    }, 30000)
-
     return () => {
       window.removeEventListener("userUpdated", handleUserUpdate)
-      clearInterval(refreshInterval)
+      if (refreshInterval) clearInterval(refreshInterval)
     }
   }, [router]) // eslint-disable-line react-hooks/exhaustive-deps
 
