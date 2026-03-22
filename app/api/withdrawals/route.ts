@@ -181,16 +181,30 @@ export async function POST(request: NextRequest): Promise<Response> {
   } catch (error: any) {
     logger.error('Withdrawal POST error', error as Error, { endpoint: '/api/withdrawals' });
 
-    if (error.message?.includes('Insufficient balance')) {
+    const errorMsg = error.message || '';
+    const isBusinessError = 
+      errorMsg.includes('Insufficient balance') ||
+      errorMsg.includes('Số dư không đủ') ||
+      errorMsg.includes('You have a pending withdrawal request') ||
+      errorMsg.includes('chờ duyệt') ||
+      errorMsg.includes('Số tiền rút') ||
+      errorMsg.includes('tối thiểu') ||
+      errorMsg.includes('tối đa') ||
+      errorMsg.includes('Vượt giới hạn') ||
+      errorMsg.includes('Ngân hàng') ||
+      errorMsg.includes('tài khoản') ||
+      errorMsg.includes('không được để trống');
+
+    if (isBusinessError) {
       return NextResponse.json({
         success: false,
-        error: 'Số dư không đủ để thực hiện rút tiền'
+        error: errorMsg.replace('Insufficient balance', 'Số dư không đủ để thực hiện rút tiền')
       }, { status: 400 });
     }
 
     return NextResponse.json({
-      success: false,
-      error: error.message || 'Internal server error'
+      success: false, // fallback 500
+      error: 'Internal server error'
     }, { status: 500 });
   }
 }

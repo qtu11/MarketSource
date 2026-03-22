@@ -891,17 +891,15 @@ export async function normalizeUserId(
       }
     }
 
-    // Một round-trip: giữ đúng thứ tự ưu tiên cũ (uid → email → username → id số)
+    // Một round-trip: loại bỏ `uid` do table `users` không có cột này (chỉ tìm theo email, username hoặc id số)
     const result = await pool.query<{ id: string }>(
       `
       SELECT id FROM (
-        SELECT id, 1 AS ord FROM users WHERE deleted_at IS NULL AND uid = $1
+        SELECT id, 1 AS ord FROM users WHERE deleted_at IS NULL AND $2::text IS NOT NULL AND email = $2
         UNION ALL
-        SELECT id, 2 AS ord FROM users WHERE deleted_at IS NULL AND $2::text IS NOT NULL AND email = $2
+        SELECT id, 2 AS ord FROM users WHERE deleted_at IS NULL AND username = $1
         UNION ALL
-        SELECT id, 3 AS ord FROM users WHERE deleted_at IS NULL AND username = $1
-        UNION ALL
-        SELECT id, 4 AS ord FROM users WHERE deleted_at IS NULL AND $3::int IS NOT NULL AND id = $3
+        SELECT id, 3 AS ord FROM users WHERE deleted_at IS NULL AND $3::int IS NOT NULL AND id = $3
       ) ranked
       ORDER BY ord
       LIMIT 1
