@@ -114,8 +114,9 @@ function createPool(): Pool | null {
         ssl: process.env.DB_SSL === 'disable'
           ? undefined
           : {
-            // ✅ FIX: Một số provider (Supabase/Neon) cần rejectUnauthorized: false trên Vercel
+            // ✅ FIX: Một số provider (Supabase/Neon) cần rejectUnauthorized: false trên Vercel/Cloudflare
             // trừ khi người dùng cấu hình CA cert thủ công.
+            // Nếu không có DB_SSL_STRICT=true, sẽ mặc định là false để tránh lỗi SELF_SIGNED_CERT_IN_CHAIN.
             rejectUnauthorized: process.env.DB_SSL_STRICT === 'true',
           },
       });
@@ -178,7 +179,7 @@ function createPool(): Pool | null {
     ssl: process.env.DB_SSL === 'disable'
       ? undefined
       : {
-        // ✅ FIX: rejectUnauthorized fallback tương tự nhánh DATABASE_URL
+        // ✅ FIX: Một số provider (Supabase/Neon) cần rejectUnauthorized: false
         rejectUnauthorized: process.env.DB_SSL_STRICT === 'true',
       },
   };
