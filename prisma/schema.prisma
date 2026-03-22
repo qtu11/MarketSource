@@ -1,6 +1,6 @@
 // Prisma Schema for QtusDevMarket
-// Database: PostgreSQL (primary) / MySQL (secondary)
-// Tất cả models đồng bộ với SQL schema
+// Database: PostgreSQL (managed Postgres / Supabase-compatible URL; app runtime dùng pg + lib/database.ts)
+// Models dùng cho migrate/generate; đồng bộ với SQL schema khi thay đổi bảng
 
 generator client {
   provider = "prisma-client-js"

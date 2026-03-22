@@ -248,16 +248,22 @@ export default function ProductDetailPage() {
                                                         .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 hover:underline">$1</a>');
                                                 }
 
-                                                // ✅ SECURITY: Sanitize HTML
+                                                // ✅ SECURITY: Luôn sanitize; fallback vẫn qua DOMPurify (strip tags) thay vì regex yếu
+                                                const PRODUCT_DESC_PURIFY = {
+                                                    ALLOWED_TAGS: ['h1','h2','h3','h4','h5','h6','p','br','strong','em','b','i','u','a','ul','ol','li','img','blockquote','pre','code','table','thead','tbody','tr','th','td','hr','span','div','figure','figcaption'],
+                                                    ALLOWED_ATTR: ['href','src','alt','title','class','target','rel','width','height'],
+                                                    ALLOW_DATA_ATTR: false,
+                                                } as const
                                                 try {
                                                     const DOMPurify = require('isomorphic-dompurify');
-                                                    return DOMPurify.sanitize(html, {
-                                                        ALLOWED_TAGS: ['h1','h2','h3','h4','h5','h6','p','br','strong','em','b','i','u','a','ul','ol','li','img','blockquote','pre','code','table','thead','tbody','tr','th','td','hr','span','div','figure','figcaption'],
-                                                        ALLOWED_ATTR: ['href','src','alt','title','class','target','rel','width','height'],
-                                                        ALLOW_DATA_ATTR: false,
-                                                    });
+                                                    return DOMPurify.sanitize(html, PRODUCT_DESC_PURIFY);
                                                 } catch {
-                                                    return html.replace(/<script[\s\S]*?<\/script>/gi, '');
+                                                    try {
+                                                        const DOMPurify = require('isomorphic-dompurify');
+                                                        return DOMPurify.sanitize(html, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+                                                    } catch {
+                                                        return '';
+                                                    }
                                                 }
                                             })()
                                         }}

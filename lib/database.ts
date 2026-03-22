@@ -870,42 +870,38 @@ export async function normalizeUserId(
   try {
     if (typeof firebaseUidOrEmail === 'number') return firebaseUidOrEmail;
 
-    // Ưu tiên tìm theo Firebase UID (nếu có), sau đó là Email, cuối cùng là Username
-    // Điều này tránh tranh chấp nếu một username trùng với một email của user khác
+    const str = String(firebaseUidOrEmail);
+    const emailToSearch =
+      typeof firebaseUidOrEmail === 'string' && firebaseUidOrEmail.includes('@')
+        ? firebaseUidOrEmail.trim() || null
+        : userEmail?.trim() || null;
 
-    // 1. External auth UID (Firebase / OAuth) — cột trong DB là `uid`, không phải `firebase_uid`
-    const resUid = await pool.query(
-      "SELECT id FROM users WHERE uid = $1 AND deleted_at IS NULL",
-      [String(firebaseUidOrEmail)]
-    );
-    if (resUid.rows.length > 0) return Number(resUid.rows[0].id);
-
-    // 2. Email (search param hoặc userEmail)
-    const emailToSearch = (typeof firebaseUidOrEmail === 'string' && firebaseUidOrEmail.includes('@'))
-      ? firebaseUidOrEmail
-      : userEmail;
-
-    if (emailToSearch) {
-      const resEmail = await pool.query("SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL", [emailToSearch]);
-      if (resEmail.rows.length > 0) return Number(resEmail.rows[0].id);
-    }
-
-    // 3. Username
-    const resUsername = await pool.query("SELECT id FROM users WHERE username = $1 AND deleted_at IS NULL", [firebaseUidOrEmail]);
-    if (resUsername.rows.length > 0) return Number(resUsername.rows[0].id);
-
-    // 4. Chuỗi chỉ gồm chữ số = khóa `users.id` (JWT login trả uid = String(id); đặt sau username để tránh nhầm username toàn số)
-    const digitsOnly = String(firebaseUidOrEmail).trim();
+    let numericId: number | null = null;
+    const digitsOnly = str.trim();
     if (/^\d+$/.test(digitsOnly)) {
       const nid = parseInt(digitsOnly, 10);
-      if (Number.isFinite(nid) && nid > 0) {
-        const resByPk = await pool.query(
-          "SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL",
-          [nid]
-        );
-        if (resByPk.rows.length > 0) return Number(resByPk.rows[0].id);
-      }
+      if (Number.isFinite(nid) && nid > 0) numericId = nid;
     }
+
+    // Một round-trip: giữ đúng thứ tự ưu tiên cũ (uid → email → username → id số)
+    const result = await pool.query<{ id: string }>(
+      `
+      SELECT id FROM (
+        SELECT id, 1 AS ord FROM users WHERE deleted_at IS NULL AND uid = $1
+        UNION ALL
+        SELECT id, 2 AS ord FROM users WHERE deleted_at IS NULL AND $2::text IS NOT NULL AND email = $2
+        UNION ALL
+        SELECT id, 3 AS ord FROM users WHERE deleted_at IS NULL AND username = $1
+        UNION ALL
+        SELECT id, 4 AS ord FROM users WHERE deleted_at IS NULL AND $3::int IS NOT NULL AND id = $3
+      ) ranked
+      ORDER BY ord
+      LIMIT 1
+      `,
+      [str, emailToSearch, numericId]
+    );
+
+    if (result.rows.length > 0) return Number(result.rows[0].id);
 
     logger.warn('normalizeUserId: Failed to resolve database ID', { firebaseUidOrEmail, userEmail });
     return null;

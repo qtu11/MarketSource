@@ -38,7 +38,7 @@ const ThreeJSAdmin = dynamic(
     loading: () => <ThreeDFallback />
   }
 )
-import { apiGet } from "@/lib/api-client"
+import { apiGet, apiPost } from "@/lib/api-client"
 import { logger } from "@/lib/logger"
 import { User as UserType, Product as ProductType, Deposit as DepositType, Withdrawal as WithdrawalType } from "@/types"
 
@@ -525,14 +525,10 @@ function AdminPageContent() {
 
   const handleLogout = useCallback(async () => {
     try {
-      // Clear admin token cookie
-      await fetch('/api/admin/logout', {
-        method: 'POST',
-        credentials: 'include',
-      }).catch(() => {
-        // Ignore errors, continue with logout
+      await apiPost('/api/admin/logout', {}, { silent: true }).catch(() => {
+        // Ignore errors, continue with logout (CSRF + cookie clear best-effort)
       })
-    } catch (error) {
+    } catch {
       // Ignore errors
     }
 

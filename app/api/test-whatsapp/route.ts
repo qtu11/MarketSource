@@ -5,7 +5,6 @@ import { logger } from '@/lib/logger'
 export const runtime = 'nodejs'
 
 async function ensureTestAccess(request: NextRequest) {
-  if (process.env.NODE_ENV === 'development') return
   await requireAdmin(request)
 }
 

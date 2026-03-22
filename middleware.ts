@@ -61,7 +61,15 @@ async function isDashboardUserAuthorized(request: NextRequest): Promise<boolean>
   try {
     const secret = new TextEncoder().encode(secretKey)
     const { payload } = await jwtVerify(raw, secret)
-    return Boolean(payload.email || payload.userId)
+    // jwtVerify đã kiểm tra chữ ký và exp (mặc định jose)
+    const email = payload.email
+    const uid = payload.userId ?? payload.sub
+    const emailOk = typeof email === 'string' && email.trim().length > 0
+    const uidOk =
+      uid !== undefined &&
+      uid !== null &&
+      String(uid).trim().length > 0
+    return emailOk || uidOk
   } catch {
     return false
   }
@@ -86,13 +94,14 @@ export async function middleware(request: NextRequest) {
     ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)
 
   if (mutatingApi) {
+    // Chỉ miễn các endpoint không thể có CSRF sẵn (OAuth, webhook, health, cấp token).
+    // /api/admin/* yêu cầu CSRF ở middleware; handler requireAdmin vẫn kiểm tra thêm khi cần.
     const csrfExempt = [
       '/api/auth/',
       '/api/telegram-webhook',
       '/api/health',
       '/api/csrf',
       '/api/admin-login',
-      '/api/admin/',
       '/api/analytics/track',
     ]
     if (!csrfExempt.some((p) => pathname.startsWith(p))) {

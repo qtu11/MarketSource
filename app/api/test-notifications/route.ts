@@ -8,9 +8,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   try {
-    if (process.env.NODE_ENV !== 'development') {
-      await requireAdmin(request)
-    }
+    await requireAdmin(request)
 
     // This is a test endpoint to trigger notifications.
     // In a real application, these would be triggered by actual events.
@@ -56,12 +54,6 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       )
     }
-    return NextResponse.json(
-      {
-        success: false,
-        error: error.message
-      },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 })
   }
 }

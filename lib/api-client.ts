@@ -197,13 +197,16 @@ export async function getAuthHeaders(): Promise<HeadersInit> {
   return headers;
 }
 
+/** Tuỳ chọn fetch dùng chung (apiRequest / apiPost / …) */
+export type ApiClientRequestInit = RequestInit & { silent?: boolean }
+
 /**
  * Gọi API với authentication
  * ✅ FIX: Thêm CSRF token cho admin routes
  */
 export async function apiRequest(
   endpoint: string,
-  options: RequestInit & { silent?: boolean } = {}
+  options: ApiClientRequestInit = {}
 ): Promise<any> {
   try {
     const headers = await getAuthHeaders();
@@ -333,7 +336,7 @@ export async function apiRequest(
 /**
  * GET request
  */
-export async function apiGet(endpoint: string, params?: Record<string, any>, options?: RequestInit) {
+export async function apiGet(endpoint: string, params?: Record<string, any>, options?: ApiClientRequestInit) {
   // Check if running in browser
   if (typeof window === 'undefined') {
     throw new Error('apiGet can only be called in browser environment');
@@ -358,7 +361,7 @@ export async function apiGet(endpoint: string, params?: Record<string, any>, opt
 /**
  * POST request
  */
-export async function apiPost(endpoint: string, data: any, options?: RequestInit) {
+export async function apiPost(endpoint: string, data: any, options?: ApiClientRequestInit) {
   return apiRequest(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(options?.headers || {}) },
@@ -371,7 +374,7 @@ export async function apiPost(endpoint: string, data: any, options?: RequestInit
 /**
  * PUT request
  */
-export async function apiPut(endpoint: string, data: any, options?: RequestInit) {
+export async function apiPut(endpoint: string, data: any, options?: ApiClientRequestInit) {
   return apiRequest(endpoint, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...(options?.headers || {}) },
@@ -384,7 +387,7 @@ export async function apiPut(endpoint: string, data: any, options?: RequestInit)
 /**
  * DELETE request
  */
-export async function apiDelete(endpoint: string, options?: RequestInit) {
+export async function apiDelete(endpoint: string, options?: ApiClientRequestInit) {
   return apiRequest(endpoint, {
     method: 'DELETE',
     credentials: 'include',
