@@ -109,16 +109,23 @@ export async function notifyDepositRequest(payload: {
   amount: number;
   method: string;
   transactionId: string;
+  /** Mã 16 ký tự cố định theo user (trang nạp tiền) */
+  depositReferenceCode?: string | null;
   ipAddress?: string;
   deviceInfo?: DeviceInfo;
 }) {
+  const refLine =
+    payload.depositReferenceCode && String(payload.depositReferenceCode).trim()
+      ? `🔑 <b>Mã giao dịch (hệ thống):</b> <code>${escapeHTML(String(payload.depositReferenceCode).trim())}</code>\n`
+      : '';
+
   const message = `💳 <b>YÊU CẦU NẠP TIỀN MỚI</b>
 
 👤 <b>Khách hàng:</b> ${escapeHTML(payload.userName || 'Unknown')}
 📧 <b>Email:</b> ${escapeHTML(payload.userEmail || 'Unknown')}
 💰 <b>Số tiền:</b> ${payload.amount.toLocaleString('vi-VN')}đ
 🏦 <b>Phương thức:</b> ${escapeHTML(payload.method)}
-📝 <b>Mã giao dịch:</b> ${escapeHTML(payload.transactionId)}
+${refLine}📝 <b>Mã GD ngân hàng / ví:</b> ${escapeHTML(payload.transactionId || '—')}
 🌐 <b>IP:</b> ${escapeHTML(payload.ipAddress || 'Unknown')}
 📱 <b>${formatDeviceInfo(payload.deviceInfo)}</b>
 

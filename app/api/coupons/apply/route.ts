@@ -39,10 +39,13 @@ export async function POST(request: NextRequest) {
 
     const userId = await getUserIdByEmail(authUser.email || '');
     if (!userId) {
-      return NextResponse.json({
-        success: false,
-        error: 'User not found'
-      }, { status: 404 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Không tìm thấy tài khoản trong hệ thống. Vui lòng đăng xuất và đăng nhập lại để đồng bộ.',
+        },
+        { status: 400 }
+      );
     }
 
     const body = await request.json();
@@ -65,10 +68,13 @@ export async function POST(request: NextRequest) {
     `, [couponCode]);
 
     if (!coupon) {
-      return NextResponse.json({
-        success: false,
-        error: 'Coupon không tồn tại hoặc đã bị vô hiệu hóa'
-      }, { status: 404 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Coupon không tồn tại hoặc đã bị vô hiệu hóa',
+        },
+        { status: 400 }
+      );
     }
 
     // Kiểm tra thời gian hiệu lực

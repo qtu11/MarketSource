@@ -14,11 +14,8 @@ const MAX_MESSAGE_LENGTH = 5000;
 // ✅ FIX: Sanitize message để tránh XSS triệt để bằng HTML Entities
 function sanitizeMessage(message: string): string {
   if (!message) return '';
-  // ✅ BUG #10 FIX: Trực tiếp cắt chuỗi nếu quá dài trước khi sanitize
-  const truncated = message.length > MAX_MESSAGE_LENGTH ? message.substring(0, MAX_MESSAGE_LENGTH) : message;
-  
-  // ✅ BUG #5 HARD FIX: Absolutely no HTML allowed in chat messages
-  const plainText = truncated.replace(/<[^>]*>/g, '').trim();
+  // Độ dài đã được Zod (messageSchema) giới hạn; không cắt trùng ở đây
+  const plainText = message.replace(/<[^>]*>/g, '').trim();
   
   return DOMPurify.sanitize(plainText, {
     ALLOWED_TAGS: [], // No HTML tags

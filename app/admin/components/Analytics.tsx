@@ -1,6 +1,6 @@
 "use client"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -29,6 +29,15 @@ function toDateKey(value: unknown): string | null {
   const d = new Date(value as string | number | Date)
   if (Number.isNaN(d.getTime())) return null
   return d.toISOString().split("T")[0]
+}
+
+/** So khớp purchase ↔ product (pg / JSON có thể trả id dạng string hoặc number). */
+function purchaseMatchesProduct(purchase: Record<string, unknown>, productId: unknown): boolean {
+  const pid = Number(productId)
+  if (!Number.isFinite(pid) || pid <= 0) return false
+  const raw = purchase.product_id ?? purchase.productId
+  const ppid = Number(raw)
+  return Number.isFinite(ppid) && ppid === pid
 }
 
 export function Analytics({ users, products, purchases, deposits, withdrawals }: AnalyticsProps) {
@@ -85,12 +94,12 @@ export function Analytics({ users, products, purchases, deposits, withdrawals }:
       return !isNaN(d.getTime()) && d >= thirtyDaysAgo
     }).length
 
-    // Product analytics
+    // Sản phẩm bán chạy: dùng toàn bộ purchases (không lọc theo kỳ như biểu đồ).
+    // Lý do: bộ lọc "7 ngày" khiến mọi đơn cũ bị loại → luôn "0 bán"; so sánh === cũng lệch string/number.
     const productSales = products.map(product => {
-      const sales = filteredPurchases.filter(p => p.product_id === product.id).length
-      const revenue = filteredPurchases
-        .filter(p => p.product_id === product.id)
-        .reduce((sum, p) => sum + Number(p.amount || 0), 0)
+      const pRecs = purchases.filter((p) => purchaseMatchesProduct(p as Record<string, unknown>, product.id))
+      const sales = pRecs.length
+      const revenue = pRecs.reduce((sum, p) => sum + Number(p.amount || 0), 0)
       return {
         ...product,
         sales,
@@ -508,6 +517,9 @@ export function Analytics({ users, products, purchases, deposits, withdrawals }:
         <Card>
           <CardHeader>
             <CardTitle>Sản phẩm bán chạy</CardTitle>
+            <CardDescription>
+              Tổng lượt mua theo toàn bộ giao dịch đã ghi nhận (không áp dụng bộ lọc thời gian phía trên).
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">

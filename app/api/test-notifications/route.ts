@@ -23,7 +23,8 @@ export async function GET(request: NextRequest) {
           userEmail: 'test@example.com',
           amount: 100000,
           method: 'Momo',
-          transactionId: 'TEST-123'
+          transactionId: 'TEST-123',
+          depositReferenceCode: 'Aa0Bb1Cc2Dd3Ee4',
         })
         break
       case 'withdrawal':

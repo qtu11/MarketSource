@@ -1250,8 +1250,8 @@ Hệ thống thông báo đang hoạt động bình thường.`
       const amount = typeof purchase.amount === 'number' ? purchase.amount : (typeof purchase.amount === 'string' ? parseFloat(purchase.amount) : 0);
       return sum + amount;
     }, 0)
-    const pendingDepositsCount = pendingDeposits.filter(d => d.status !== "rejected").length
-    const pendingWithdrawalsCount = pendingWithdrawals.filter(w => w.status !== "rejected").length
+    const pendingDepositsCount = pendingDeposits.filter(d => d.status === "pending").length
+    const pendingWithdrawalsCount = pendingWithdrawals.filter(w => w.status === "pending").length
     const newUsersCount = users.filter(user => {
       const registrationDate = new Date(user.created_at || (user as any).createdAt || new Date())
       const now = new Date()
@@ -1301,7 +1301,10 @@ Hệ thống thông báo đang hoạt động bình thường.`
       amount: deposit.amount || 0,
       date: deposit.timestamp || deposit.created_at || new Date().toISOString(),
       email: deposit.userEmail || deposit.user_email,
-      description: "Yêu cầu nạp tiền",
+      description:
+        deposit.deposit_reference_code || deposit.depositReferenceCode
+          ? `Nạp tiền · Mã HT ${deposit.deposit_reference_code || deposit.depositReferenceCode}`
+          : "Yêu cầu nạp tiền",
     }))
 
     const withdrawalRows = pendingWithdrawals.map((withdrawal: any) => ({

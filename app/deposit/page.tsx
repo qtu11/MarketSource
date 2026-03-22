@@ -221,6 +221,10 @@ export default function DepositPage() {
   const [step, setStep] = useState(1) // 1: Amount, 2: Method, 3: Confirm
   const [showHistory, setShowHistory] = useState(false)
   const [submitSuccess, setSubmitSuccess] = useState(false)
+  const [depositRefCode, setDepositRefCode] = useState<string | null>(null)
+  const [depositRefLoading, setDepositRefLoading] = useState(false)
+  const [depositRefError, setDepositRefError] = useState<string | null>(null)
+  const [depositRefRetry, setDepositRefRetry] = useState(0)
 
   // ==================== USER LOADING ====================
   useEffect(() => {
@@ -298,6 +302,39 @@ export default function DepositPage() {
       if (refreshInterval) clearInterval(refreshInterval)
     }
   }, [router]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Mã tham chiếu 16 ký tự (unique theo user, lưu DB) — hiển thị dưới "Nội dung CK"
+  useEffect(() => {
+    if (!user?.email) return
+    let cancelled = false
+    ;(async () => {
+      setDepositRefLoading(true)
+      setDepositRefError(null)
+      try {
+        const res = await apiGet("/api/deposit-reference")
+        if (!cancelled && res?.success && typeof res.code === "string") {
+          setDepositRefCode(res.code)
+          setDepositRefError(null)
+        } else if (!cancelled) {
+          setDepositRefCode(null)
+          setDepositRefError("Không nhận được mã từ máy chủ.")
+        }
+      } catch (e) {
+        logger.error("deposit-reference fetch failed", e)
+        if (!cancelled) {
+          setDepositRefCode(null)
+          setDepositRefError(
+            e instanceof Error ? e.message : "Không tải được mã. Kiểm tra đăng nhập hoặc tải lại trang."
+          )
+        }
+      } finally {
+        if (!cancelled) setDepositRefLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user?.email, depositRefRetry])
 
   // ==================== LOAD DEPOSITS ====================
   const loadUserDeposits = async (email: string) => {
@@ -641,15 +678,28 @@ export default function DepositPage() {
                           { label: "Số tài khoản", value: selectedMethodInfo.accountNumber, key: "accountNumber" },
                           { label: "Chủ tài khoản", value: selectedMethodInfo.accountName, key: "accountName" },
                           { label: "Nội dung CK", value: `NAP ${user.email}`, key: "content" },
+                          {
+                            label: "Mã giao dịch",
+                            value: depositRefLoading ? "Đang tạo mã…" : depositRefCode || "—",
+                            key: "refCode",
+                            copyDisabled: depositRefLoading || !depositRefCode,
+                          },
                         ].map((info) => (
                           <div key={info.key} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
                             <span className="text-xs text-white/40">{info.label}</span>
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-white/80">{info.value}</span>
+                              <span
+                                className={`text-sm font-medium text-white/80 ${
+                                  info.key === "refCode" ? "font-mono tracking-wide" : ""
+                                }`}
+                              >
+                                {info.value}
+                              </span>
                               <button
                                 type="button"
-                                onClick={() => copyToClipboard(info.value, info.key)}
-                                className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+                                disabled={info.copyDisabled}
+                                onClick={() => !info.copyDisabled && copyToClipboard(String(info.value), info.key)}
+                                className="p-1.5 rounded-lg hover:bg-white/10 transition-colors disabled:opacity-30 disabled:pointer-events-none"
                               >
                                 {copiedField === info.key
                                   ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
@@ -659,6 +709,18 @@ export default function DepositPage() {
                             </div>
                           </div>
                         ))}
+                        {depositRefError && (
+                          <div className="rounded-lg bg-amber-500/10 border border-amber-500/25 px-3 py-2 text-xs text-amber-100 space-y-2">
+                            <p>{depositRefError}</p>
+                            <button
+                              type="button"
+                              onClick={() => setDepositRefRetry((n) => n + 1)}
+                              className="text-amber-300 underline hover:text-amber-200"
+                            >
+                              Thử tải mã lại
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       {selectedMethodInfo.qrCode && (
@@ -687,11 +749,11 @@ export default function DepositPage() {
 
                   <div className="space-y-4">
                     <div>
-                      <Label htmlFor="transactionId" className="text-white/60 text-sm">Mã giao dịch</Label>
+                      <Label htmlFor="transactionId" className="text-white/60 text-sm">Mã GD từ ngân hàng / ví</Label>
                       <Input
                         id="transactionId"
                         type="text"
-                        placeholder="Nhập mã giao dịch từ ngân hàng/ví điện tử"
+                        placeholder="Nhập mã do ngân hàng hoặc ví cấp sau khi chuyển"
                         value={transactionId}
                         onChange={(e) => setTransactionId(e.target.value)}
                         required
@@ -715,7 +777,7 @@ export default function DepositPage() {
                           <span className="text-white font-medium">{selectedMethodInfo.name}</span>
                         </div>
                         <div className="flex justify-between text-sm">
-                          <span className="text-white/60">Mã GD:</span>
+                          <span className="text-white/60">Mã GD ngân hàng:</span>
                           <span className="text-white font-medium">{transactionId}</span>
                         </div>
                       </div>

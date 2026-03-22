@@ -11,6 +11,7 @@ import { FloatingHeader } from "@/components/floating-header"
 import { Footer } from "@/components/footer"
 import { apiGet } from "@/lib/api-client"
 import { mapBackendToFrontend } from "@/lib/product-mapper"
+import { replaceMarkdownLinksWithSafeAnchors } from "@/lib/safe-markdown-links"
 import dynamic from "next/dynamic"
 import NextImage from "next/image"
 
@@ -244,9 +245,13 @@ export default function ProductDetailPage() {
                                                         .replace(/## (.*)/g, '<h2 class="text-xl font-bold mt-6 mb-3 text-purple-600 dark:text-purple-400 border-b border-gray-200 dark:border-gray-800 pb-2">$1</h2>')
                                                         .replace(/### (.*)/g, '<h3 class="text-lg font-bold mt-4 mb-2 text-purple-500 dark:text-purple-300">$1</h3>')
                                                         .replace(/- (.*)/g, '<span class="text-purple-500 mr-2">•</span> $1')
-                                                        .replace(/`([^`]+)`/g, '<code class="bg-black/5 dark:bg-white/10 text-pink-600 dark:text-pink-400 px-1.5 py-0.5 rounded text-sm font-mono">$1</code>')
-                                                        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 hover:underline">$1</a>');
+                                                        .replace(/`([^`]+)`/g, '<code class="bg-black/5 dark:bg-white/10 text-pink-600 dark:text-pink-400 px-1.5 py-0.5 rounded text-sm font-mono">$1</code>');
                                                 }
+
+                                                html = replaceMarkdownLinksWithSafeAnchors(
+                                                    html,
+                                                    'target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"'
+                                                );
 
                                                 // ✅ SECURITY: Luôn sanitize; fallback vẫn qua DOMPurify (strip tags) thay vì regex yếu
                                                 const PRODUCT_DESC_PURIFY = {

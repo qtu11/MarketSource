@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { logger } from "@/lib/logger-client"
 import { getDeviceInfo, getIPAddress } from "@/lib/auth"
 import { apiPost, apiGet } from "@/lib/api-client"
@@ -347,6 +347,14 @@ export default function WithdrawPage() {
     }
   }
 
+  const pendingWithdrawalTotal = useMemo(
+    () =>
+      withdrawals
+        .filter((w) => w.status === "pending")
+        .reduce((sum, w) => sum + Number(w.amount || 0), 0),
+    [withdrawals]
+  )
+
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0a0a1a]">
@@ -388,12 +396,24 @@ export default function WithdrawPage() {
             Hỗ trợ rút qua tất cả các ngân hàng Việt Nam, duyệt và xử lý nhanh chóng
           </p>
 
-          <div className="inline-flex items-center gap-4 mt-8 px-8 py-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 to-green-500/10 border border-emerald-500/20 backdrop-blur-xl">
-            <Wallet className="w-6 h-6 text-emerald-400" />
-            <div className="text-left">
-              <p className="text-xs text-emerald-300/60 uppercase tracking-wider">Khả dụng rút tiền</p>
-              <p className="text-2xl font-bold text-emerald-400">
-                {userBalance.toLocaleString("vi-VN")}đ
+          <div className="inline-flex flex-col sm:flex-row items-stretch sm:items-center gap-4 mt-8 px-8 py-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 to-green-500/10 border border-emerald-500/20 backdrop-blur-xl max-w-lg mx-auto">
+            <div className="flex items-center gap-4">
+              <Wallet className="w-6 h-6 text-emerald-400 shrink-0" />
+              <div className="text-left min-w-0">
+                <p className="text-xs text-emerald-300/60 uppercase tracking-wider">Số dư ví hiện tại</p>
+                <p className="text-2xl font-bold text-emerald-400">
+                  {userBalance.toLocaleString("vi-VN")}đ
+                </p>
+              </div>
+            </div>
+            <div className="text-left text-xs text-white/50 border-t sm:border-t-0 sm:border-l border-white/10 pt-3 sm:pt-0 sm:pl-4 sm:max-w-[280px] leading-relaxed">
+              {pendingWithdrawalTotal > 0 && (
+                <p className="text-amber-200/90 mb-1.5">
+                  <span className="font-semibold">{pendingWithdrawalTotal.toLocaleString("vi-VN")}đ</span> đang chờ duyệt — đã tạm trừ khi bạn gửi yêu cầu. Nếu admin từ chối, tiền được hoàn lại ví.
+                </p>
+              )}
+              <p>
+                Hệ thống trừ số dư ngay lúc gửi lệnh rút để không ai rút vượt quá số dư trong lúc chờ xử lý. Sau khi duyệt, khoản này được chuyển ra ngoài theo STK bạn đã nhập.
               </p>
             </div>
           </div>
@@ -675,7 +695,7 @@ export default function WithdrawPage() {
                   <span className="text-pink-500">•</span> Sai thông tin ngân hàng hệ thống sẽ từ chối và hoàn tiền về ví web.
                 </li>
                 <li className="flex gap-2">
-                  <span className="text-pink-500">•</span> Rút tiền miễn phí giao dịch 100%. Tối thiểu là 50,000 VNĐ.
+                  <span className="text-pink-500">•</span> Rút tiền miễn phí giao dịch 100%. Tối thiểu là 5,000 VNĐ.
                 </li>
               </ul>
             </div>

@@ -42,9 +42,11 @@ export async function GET(request: NextRequest): Promise<Response> {
     // ✅ FIX: So sánh đúng cách - cần convert userId từ DB sang uid hoặc ngược lại
     if (userId && authUser && !isAdmin) {
       const dbUserId = await getUserIdByEmail(authUser.email || '');
-      const userIdNum = parseInt(userId);
-
-      if (dbUserId !== userIdNum && authUser.uid !== userId) {
+      const param = String(userId).trim();
+      const sameNumericId =
+        dbUserId !== null && /^\d+$/.test(param) && String(dbUserId) === param;
+      const sameProviderUid = authUser.uid === param;
+      if (!sameNumericId && !sameProviderUid) {
         return NextResponse.json({
           success: false,
           error: 'Unauthorized: Can only view your own withdrawals'
@@ -100,6 +102,9 @@ export async function POST(request: NextRequest): Promise<Response> {
         error: 'Unauthorized'
       }, { status: 401 });
     }
+
+    const evPost = await requireEmailVerifiedForUser(authUser);
+    if (evPost) return evPost;
 
     const dbUserIdForRl = await normalizeUserId(authUser.uid, authUser.email || undefined)
     if (!dbUserIdForRl) {
@@ -263,6 +268,24 @@ export async function PUT(request: NextRequest): Promise<Response> {
         });
       } catch (notifErr) {
         logger.warn('Failed to create withdrawal notification', { error: notifErr });
+      }
+
+      // ✅ NEW: Gửi email khi duyệt/từ chối
+      try {
+        const user = await getUserById(Number(withdrawal.user_id));
+        if (user?.email) {
+          const { sendWithdrawalApprovalEmail, sendWithdrawalRejectionEmail } = await import('@/lib/email');
+          if (updateData.status === 'approved') {
+            const userFull = await getUserById(Number(withdrawal.user_id)); // Re-fetch to get new balance if needed, but normally bal is in lib/database
+            // Get new balance to be accurate
+            const balanceRow = await queryOne<any>('SELECT balance FROM users WHERE id = $1', [Number(withdrawal.user_id)]);
+            await sendWithdrawalApprovalEmail(user.email, Number(withdrawal.amount), Number(balanceRow?.balance || 0));
+          } else {
+            await sendWithdrawalRejectionEmail(user.email, Number(withdrawal.amount));
+          }
+        }
+      } catch (emailErr) {
+        logger.warn('Failed to send withdrawal email', { error: emailErr });
       }
 
       return NextResponse.json({

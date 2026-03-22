@@ -22,9 +22,11 @@ export function Withdrawmoney({
   loadData
 }: WithdrawmoneyProps) {
   const [showRejected, setShowRejected] = useState(false)
+  const [includeApproved, setIncludeApproved] = useState(false)
 
   const filteredWithdrawals = pendingWithdrawals.filter(w => {
-    if (showRejected) return true
+    if (showRejected) return w.status === "rejected"
+    if (!includeApproved) return w.status === "pending"
     return w.status !== "rejected"
   })
 
@@ -47,6 +49,15 @@ export function Withdrawmoney({
               className="ml-4"
             >
               Làm mới
+            </Button>
+            <Button
+              size="sm"
+              variant={includeApproved ? "default" : "outline"}
+              onClick={() => setIncludeApproved(!includeApproved)}
+              className="text-xs h-7"
+              disabled={showRejected}
+            >
+              {includeApproved ? 'Chỉ chờ duyệt' : 'Hiện đã duyệt'}
             </Button>
             <Button
               size="sm"
@@ -85,12 +96,12 @@ export function Withdrawmoney({
                       {/* Enhanced User Balance Info */}
                       <div className="mb-3 p-2 bg-red-100 dark:bg-red-900 rounded border-l-4 border-red-500 shadow-inner">
                         <p className="text-xs text-blue-600">
-                          💰 Số dư hiện tại: {(withdrawal.userBalance || 0).toLocaleString('vi-VN')}đ
+                          💰 Số dư hiện tại: {Number(withdrawal.userBalance || 0).toLocaleString('vi-VN')}đ
                         </p>
                         <p className="text-xs text-red-600">
-                          ➖ Sau rút: {Math.max(0, (withdrawal.userBalance || 0) - withdrawal.amount).toLocaleString('vi-VN')}đ
+                          ➖ Sau rút: {Math.max(0, Number(withdrawal.userBalance || 0) - Number(withdrawal.amount || 0)).toLocaleString('vi-VN')}đ
                         </p>
-                        {(withdrawal.userBalance || 0) < withdrawal.amount && (
+                        {Number(withdrawal.userBalance || 0) < Number(withdrawal.amount || 0) && (
                           <p className="text-xs text-red-800 font-semibold bg-red-100 dark:bg-red-800 p-1 rounded mt-1">
                             ⚠️ KHÔNG ĐỦ SỐ DƯ!
                           </p>
@@ -133,10 +144,10 @@ export function Withdrawmoney({
                     <div className="flex flex-col lg:flex-row lg:items-center space-y-2 lg:space-y-0 lg:space-x-4">
                       <div className="text-right">
                         <p className="text-lg font-bold text-red-600">
-                          -{withdrawal.amount.toLocaleString('vi-VN')}đ
+                          -{Number(withdrawal.amount || 0).toLocaleString('vi-VN')}đ
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          Nhận thực tế: {withdrawal.amount.toLocaleString('vi-VN')}đ (Miễn phí)
+                          Nhận thực tế: {Number(withdrawal.amount || 0).toLocaleString('vi-VN')}đ (Miễn phí)
                         </p>
                         <Badge className={
                           withdrawal.status === "pending" ? "bg-yellow-500 text-white shadow-md" :
@@ -176,9 +187,15 @@ export function Withdrawmoney({
                   </div>
                 </div>
               ))}
-            {pendingWithdrawals.filter(w => w.status !== "rejected").length === 0 && (
+            {filteredWithdrawals.length === 0 && (
               <p className="text-center text-muted-foreground py-8">
-                Không có yêu cầu rút tiền nào
+                {pendingWithdrawals.length === 0
+                  ? 'Không có yêu cầu rút tiền nào'
+                  : showRejected
+                    ? 'Không có yêu cầu rút tiền bị từ chối.'
+                    : !includeApproved
+                      ? 'Không có yêu cầu chờ duyệt. Nhấn «Hiện đã duyệt» để xem lịch sử.'
+                      : 'Không có mục nào khớp bộ lọc hiện tại.'}
               </p>
             )}
           </div>

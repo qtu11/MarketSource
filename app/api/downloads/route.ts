@@ -30,6 +30,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, downloads: [] })
     }
 
+    const rateUser = await checkRateLimitAndRespond(request, 80, 60, 'downloads-get-user', dbUserId)
+    if (rateUser) return rateUser
+
     // Query downloads + join với products để lấy title, image
     // Chỉ select cột có trong schema `products` (không có version / file_size trên mọi DB)
     const downloads = await query(`
@@ -71,6 +74,6 @@ export async function GET(request: NextRequest) {
     })
   } catch (error: any) {
     logger.error('Downloads API error', error)
-    return NextResponse.json({ success: false, downloads: [], error: error.message }, { status: 500 })
+    return NextResponse.json({ success: false, downloads: [], error: 'Internal server error' }, { status: 500 })
   }
 }

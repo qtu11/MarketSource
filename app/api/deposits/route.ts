@@ -9,6 +9,7 @@ import {
   queryOne,
   createNotification,
   normalizeUserId,
+  getOrCreateUserDepositReferenceCode,
 } from '@/lib/database'
 import { verifyFirebaseToken, requireAdmin, validateRequest, requireEmailVerifiedForUser } from '@/lib/api-auth'
 import { checkRateLimitAndRespond } from '@/lib/rate-limit'
@@ -144,10 +145,21 @@ export async function POST(request: NextRequest): Promise<Response> {
       deviceInfo: depositData.deviceInfo
     });
 
+    let depositReferenceCode: string | undefined;
+    try {
+      const dbUid = await normalizeUserId(dbUserIdToken, authUser.email || undefined);
+      if (dbUid) {
+        depositReferenceCode = await getOrCreateUserDepositReferenceCode(dbUid);
+      }
+    } catch (e) {
+      logger.warn('Could not resolve deposit reference code for Telegram', { error: (e as Error)?.message });
+    }
+
     const depositRow = await queryOne<any>(
-      `SELECT d.*, u.email, u.username
+      `SELECT d.*, u.email, u.username, r.code AS deposit_reference_code
        FROM deposits d
        LEFT JOIN users u ON d.user_id = u.id
+       LEFT JOIN user_deposit_reference_codes r ON r.user_id = d.user_id
        WHERE d.id = $1`,
       [result.id],
     );
@@ -158,6 +170,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       amount: depositData.amount,
       method: depositData.method,
       transactionId: effectiveTxnId,
+      depositReferenceCode,
       ipAddress: depositData.ipAddress,
       deviceInfo: depositData.deviceInfo,
     };
@@ -265,6 +278,16 @@ export async function PUT(request: NextRequest): Promise<Response> {
         logger.warn('Failed to create deposit notification', { error: notifErr });
       }
 
+      try {
+        const user = await getUserById(Number(deposit.user_id));
+        if (user?.email) {
+          const { sendDepositApprovalEmail } = await import('@/lib/email');
+          await sendDepositApprovalEmail(user.email, Number(deposit.amount), result.newBalance);
+        }
+      } catch (emailErr) {
+        logger.warn('Failed to send deposit approval email', { error: emailErr });
+      }
+
       return NextResponse.json({
         success: true,
         message: 'Deposit approved and balance updated',
@@ -276,6 +299,22 @@ export async function PUT(request: NextRequest): Promise<Response> {
         updateData.status,
         updateData.approvedBy
       );
+
+      // ✅ NEW: Gửi email khi bị từ chối (reject)
+      if (updateData.status === 'rejected') {
+        try {
+          const deposit = await queryOne<any>('SELECT user_id, amount FROM deposits WHERE id = $1', [Number(updateData.depositId)]);
+          if (deposit) {
+            const user = await getUserById(Number(deposit.user_id));
+            if (user?.email) {
+              const { sendDepositRejectionEmail } = await import('@/lib/email');
+              await sendDepositRejectionEmail(user.email, Number(deposit.amount));
+            }
+          }
+        } catch (emailErr) {
+          logger.warn('Failed to send deposit rejection email', { error: emailErr });
+        }
+      }
 
       return NextResponse.json({
         success: true,

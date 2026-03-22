@@ -44,12 +44,13 @@ export async function GET(request: NextRequest) {
 
     if (authUser && !isAdmin) {
       const uidStr = String(uid);
-      const uidAsNum = parseInt(uidStr, 10);
       const authDbId = authUser.email ? await getUserIdByEmail(authUser.email) : null;
-      
-      // ✅ FIX: Force Number type comparison because authDbId might be string from PostgreSQL BIGSERIAL
+
+      // So khớp ID dạng chuỗi (tránh coercion / BigInt) — chỉ khi param là số thuần
       const sameNumericId =
-        !Number.isNaN(uidAsNum) && authDbId !== null && Number(authDbId) === uidAsNum;
+        authDbId !== null &&
+        /^\d+$/.test(uidStr.trim()) &&
+        String(authDbId) === uidStr.trim();
       
       const sameProviderUid = authUser.uid === uidStr;
       

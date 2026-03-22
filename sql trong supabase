@@ -136,6 +136,9 @@ CREATE TABLE public.audit_logs (
   user_agent text,
   created_at timestamp with time zone DEFAULT now(),
   admin_id bigint,
+  target_type character varying,
+  target_id character varying,
+  details jsonb,
   CONSTRAINT audit_logs_pkey PRIMARY KEY (id),
   CONSTRAINT audit_logs_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT audit_logs_admin_id_fkey FOREIGN KEY (admin_id) REFERENCES public.users(id)
@@ -459,6 +462,7 @@ CREATE TABLE public.deposits (
   timestamp timestamp with time zone DEFAULT now(),
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
+  device_info jsonb,
   CONSTRAINT deposits_pkey PRIMARY KEY (id),
   CONSTRAINT deposits_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
@@ -1488,6 +1492,13 @@ CREATE TABLE public.user_coupons (
   CONSTRAINT user_coupons_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT user_coupons_coupon_id_fkey FOREIGN KEY (coupon_id) REFERENCES public.coupons(id)
 );
+CREATE TABLE public.user_deposit_reference_codes (
+  user_id integer NOT NULL,
+  code character varying NOT NULL CHECK (char_length(code::text) = 16),
+  created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT user_deposit_reference_codes_pkey PRIMARY KEY (user_id),
+  CONSTRAINT user_deposit_reference_codes_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
 CREATE TABLE public.user_preferences (
   id bigint NOT NULL DEFAULT nextval('user_preferences_id_seq'::regclass),
   user_id bigint UNIQUE,
@@ -1599,6 +1610,9 @@ CREATE TABLE public.users (
   last_activity timestamp with time zone,
   login_count integer NOT NULL DEFAULT 0,
   referral_code character varying,
+  email_verified_at timestamp with time zone,
+  email_verification_token text,
+  email_verification_expires timestamp with time zone,
   CONSTRAINT users_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.webhooks (
@@ -1642,6 +1656,9 @@ CREATE TABLE public.withdrawals (
   notes text,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
+  idempotency_key character varying,
+  ip_address character varying,
+  device_info jsonb,
   CONSTRAINT withdrawals_pkey PRIMARY KEY (id),
   CONSTRAINT withdrawals_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );

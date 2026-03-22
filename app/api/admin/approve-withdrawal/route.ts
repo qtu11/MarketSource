@@ -123,11 +123,14 @@ export async function POST(request: NextRequest) {
         adminEmail
       );
 
-      // ✅ BUG #8 FIX: Log admin action
-      const { logAdminAction } = await import('@/lib/audit-logger');
-      const adminId = (admin as any).userId || (admin as any).uid || 'unknown';
+      // ✅ BUG #8 FIX: Log admin action (resolve DB id — tránh admin_id = 0 vi phạm FK)
+      const { logAdminAction, resolveAdminIdForAudit } = await import('@/lib/audit-logger');
+      const auditAdminId = await resolveAdminIdForAudit({
+        email: (admin as any).email,
+        uid: (admin as any).uid,
+      });
       await logAdminAction({
-        adminId: typeof adminId === 'number' ? adminId : 0,
+        adminId: auditAdminId,
         adminEmail: (admin as any).email || 'unknown',
         action: 'APPROVE_WITHDRAWAL',
         targetType: 'withdrawal',
@@ -201,10 +204,13 @@ export async function POST(request: NextRequest) {
       }
 
       // ✅ BUG #8 FIX: Log admin action for rejection
-      const { logAdminAction } = await import('@/lib/audit-logger');
-      const adminIdForReject = (admin as any).userId || (admin as any).uid || 0;
+      const { logAdminAction, resolveAdminIdForAudit } = await import('@/lib/audit-logger');
+      const auditAdminIdReject = await resolveAdminIdForAudit({
+        email: (admin as any).email,
+        uid: (admin as any).uid,
+      });
       await logAdminAction({
-        adminId: typeof adminIdForReject === 'number' ? adminIdForReject : 0,
+        adminId: auditAdminIdReject,
         adminEmail: (admin as any).email || 'unknown',
         action: 'REJECT_WITHDRAWAL',
         targetType: 'withdrawal',
@@ -212,6 +218,23 @@ export async function POST(request: NextRequest) {
         details: { status: 'rejected' },
         ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown'
       });
+
+      // ✅ NEW: Gửi email thông báo rút tiền bị từ chối
+      try {
+        const recipientEmail = userEmail || (await (async () => {
+          const { getUserById } = await import('@/lib/database');
+          const user = await getUserById(dbUserIdForReject);
+          return user?.email;
+        })());
+        if (recipientEmail) {
+          const { sendWithdrawalRejectionEmail } = await import('@/lib/email');
+          const rejectAmt = Number(amount) || Number(withdrawal.amount) || 0;
+          await sendWithdrawalRejectionEmail(recipientEmail, rejectAmt);
+        }
+      } catch (emailError) {
+        const { logger } = await import('@/lib/logger');
+        logger.warn('Failed to send withdrawal rejection email (non-critical)', { error: emailError, userId: dbUserIdForReject });
+      }
     }
 
     // Send notification

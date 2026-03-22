@@ -684,18 +684,12 @@ export default function DashboardPage() {
       setDownloadLoading(true)
       try {
         const result = await apiGet('/api/downloads')
-        const downloads = (result.downloads || result.data || []).filter((item: any) => {
-          if (item.user_id === undefined && item.userEmail === undefined) {
-            return true
-          }
-          const uid = user.uid?.toString()
-          const id = user.id?.toString()
-          const downloadUserId = item.user_id?.toString()
-          return downloadUserId === uid || downloadUserId === id || item.userEmail === user.email
-        })
+        // Không lọc thêm theo uid Firebase ở client: /api/downloads đã xác thực token và
+        // WHERE user_id = id Postgres — lọc user.uid === user_id sẽ loại hết khi id DB chưa sync / khác kiểu.
+        const downloads = result.downloads || result.data || []
         const mapped: DownloadRecord[] = downloads.map((item: any) => ({
-          id: item.id || `${item.product_id}-${item.created_at}`,
-          productId: item.product_id,
+          id: String(item.id ?? `${item.product_id}-${item.created_at}`),
+          productId: String(item.product_id ?? ""),
           productTitle: item.product_title || "Sản phẩm",
           version: item.version || "1.0",
           size: item.size || item.file_size,
@@ -703,11 +697,11 @@ export default function DashboardPage() {
           checksum: item.checksum,
           expiresAt: item.expires_at,
           createdAt: item.created_at || item.generated_at || new Date().toISOString(),
-          lastDownloadedAt: item.last_downloaded_at,
-          totalDownloads: item.total_downloads || item.download_count,
+          lastDownloadedAt: item.last_downloaded_at || item.created_at,
+          totalDownloads: item.total_downloads ?? item.download_count,
           ipAddress: item.ip_address,
           device: item.device || item.device_info,
-          status: item.status || "active",
+          status: (item.status as DownloadRecord["status"]) || "active",
         }))
         setDownloadRecords(mapped)
         setLocalStorage("downloadHistory", mapped)

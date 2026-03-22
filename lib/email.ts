@@ -705,3 +705,145 @@ export async function sendSystemNotificationEmail(email: string, title: string, 
     html: htmlTemplate,
   });
 }
+
+export async function sendDepositRejectionEmail(email: string, amount: number, reason?: string) {
+  const siteName = 'QTUS Dev Market';
+  const siteUrl = process.env.NEXT_PUBLIC_URL || 'https://market-source.vercel.app';
+
+  const htmlTemplate = `
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yêu cầu nạp tiền bị từ chối</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f4f7f9; font-family: 'Inter', system-ui, -apple-system, sans-serif;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f4f7f9; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.05);">
+          <!-- Content Body -->
+          <tr>
+            <td style="padding: 40px;">
+              <div style="text-align: center; margin-bottom: 24px;">
+                <div style="background-color: #fee2e2; display: inline-block; padding: 16px; border-radius: 50%; margin-bottom: 16px;">
+                  <span style="font-size: 32px;">❌</span>
+                </div>
+                <h2 style="color: #dc2626; font-size: 24px; font-weight: 800; margin: 0;">Nạp tiền thất bại</h2>
+              </div>
+              
+              <p style="color: #475569; font-size: 16px; line-height: 1.8; margin: 0 0 24px 0; text-align: center;">
+                Yêu cầu nạp tiền ${amount.toLocaleString('vi-VN')}đ của bạn đã không được duyệt.
+              </p>
+              
+              <!-- Details Box -->
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 32px;">
+                <tr>
+                  <td style="padding: 24px;">
+                    <p style="color: #64748b; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px 0; font-weight: 700;">Lý do từ chối</p>
+                    <p style="color: #1e293b; font-size: 16px; font-weight: 600; margin: 0;">${reason || 'Thông tin giao dịch không hợp lệ hoặc không tìm thấy khớp lệnh chuyển khoản.'}</p>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="color: #64748b; font-size: 14px; line-height: 1.6; text-align: center;">
+                Nếu bạn tin rằng đây là một sai sót, vui lòng liên hệ với bộ phận hỗ trợ kèm theo minh chứng chuyển khoản.
+              </p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #f8faff; padding: 30px 40px; text-align: center; border-top: 1px solid #f0f0f0;">
+              <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                © ${new Date().getFullYear()} ${siteName}. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+
+  return sendEmail({
+    to: email,
+    subject: `[${siteName}] Thông báo: Yêu cầu nạp tiền bị từ chối`,
+    html: htmlTemplate,
+  });
+}
+
+export async function sendWithdrawalRejectionEmail(email: string, amount: number, reason?: string) {
+  const siteName = 'QTUS Dev Market';
+  const siteUrl = process.env.NEXT_PUBLIC_URL || 'https://market-source.vercel.app';
+
+  const htmlTemplate = `
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yêu cầu rút tiền bị từ chối</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f4f7f9; font-family: 'Inter', system-ui, -apple-system, sans-serif;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f4f7f9; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.05);">
+          <!-- Content Body -->
+          <tr>
+            <td style="padding: 40px;">
+              <div style="text-align: center; margin-bottom: 24px;">
+                <div style="background-color: #fee2e2; display: inline-block; padding: 16px; border-radius: 50%; margin-bottom: 16px;">
+                  <span style="font-size: 32px;">⚠️</span>
+                </div>
+                <h2 style="color: #dc2626; font-size: 24px; font-weight: 800; margin: 0;">Rút tiền bị từ chối</h2>
+              </div>
+              
+              <p style="color: #475569; font-size: 16px; line-height: 1.8; margin: 0 0 24px 0; text-align: center;">
+                Yêu cầu rút tiền ${amount.toLocaleString('vi-VN')}đ của bạn đã không thành công.
+              </p>
+              
+              <!-- Details Box -->
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 32px;">
+                <tr>
+                  <td style="padding: 24px;">
+                    <p style="color: #64748b; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px 0; font-weight: 700;">Lý do từ chối</p>
+                    <p style="color: #1e293b; font-size: 16px; font-weight: 600; margin: 0;">${reason || 'Thông tin tài khoản ngân hàng không chính xác hoặc vi phạm chính sách rút tiền.'}</p>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="color: #1e293b; font-size: 15px; text-align: center; font-weight: 600; margin-bottom: 16px;">
+                💡 Số tiền đã được hoàn lại vào ví của bạn.
+              </p>
+
+              <p style="color: #64748b; font-size: 14px; line-height: 1.6; text-align: center;">
+                Vui lòng kiểm tra lại thông tin ngân hàng và thử lại sau.
+              </p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #f8faff; padding: 30px 40px; text-align: center; border-top: 1px solid #f0f0f0;">
+              <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                © ${new Date().getFullYear()} ${siteName}. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+
+  return sendEmail({
+    to: email,
+    subject: `[${siteName}] Thông báo: Yêu cầu rút tiền bị từ chối`,
+    html: htmlTemplate,
+  });
+}

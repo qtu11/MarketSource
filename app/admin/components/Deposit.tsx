@@ -22,9 +22,12 @@ export function Deposit({
   loadData
 }: DepositProps) {
   const [showRejected, setShowRejected] = useState(false)
+  /** Bật «Hiện đã duyệt»: chờ + đã duyệt (ẩn từ chối). «Hiện đã từ chối»: chỉ các lệnh rejected. */
+  const [includeApproved, setIncludeApproved] = useState(false)
 
   const filteredDeposits = pendingDeposits.filter(d => {
-    if (showRejected) return true
+    if (showRejected) return d.status === "rejected"
+    if (!includeApproved) return d.status === "pending"
     return d.status !== "rejected"
   })
 
@@ -32,7 +35,7 @@ export function Deposit({
     <div className="space-y-6">
       <Card className="shadow-md neon-border-hover glass-panel text-slate-900 dark:text-slate-100">
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
+          <CardTitle className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center space-x-2">
               Yêu cầu nạp tiền ({filteredDeposits.length})
               <div className="flex items-center space-x-2">
@@ -40,22 +43,28 @@ export function Deposit({
                 <span className="text-xs text-muted-foreground">Real-time</span>
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={loadData}
-              className="ml-4"
-            >
-              Làm mới
-            </Button>
-            <Button
-              size="sm"
-              variant={showRejected ? "default" : "outline"}
-              onClick={() => setShowRejected(!showRejected)}
-              className="text-xs h-7"
-            >
-              {showRejected ? 'Ẩn đã từ chối' : 'Hiện đã từ chối'}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={loadData}>
+                Làm mới
+              </Button>
+              <Button
+                size="sm"
+                variant={includeApproved ? "default" : "outline"}
+                onClick={() => setIncludeApproved(!includeApproved)}
+                className="text-xs h-7"
+                disabled={showRejected}
+              >
+                {includeApproved ? "Chỉ chờ duyệt" : "Hiện đã duyệt"}
+              </Button>
+              <Button
+                size="sm"
+                variant={showRejected ? "default" : "outline"}
+                onClick={() => setShowRejected(!showRejected)}
+                className="text-xs h-7"
+              >
+                {showRejected ? "Ẩn đã từ chối" : "Hiện đã từ chối"}
+              </Button>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -84,17 +93,22 @@ export function Deposit({
                     {/* Enhanced User Info */}
                     <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded border-l-4 border-blue-500 shadow-inner">
                       <p className="text-xs text-blue-600">
-                        💰 Số dư hiện tại: {(deposit.userBalance || 0).toLocaleString('vi-VN')}đ
+                        💰 Số dư hiện tại: {Number(deposit.userBalance || 0).toLocaleString('vi-VN')}đ
                       </p>
                       <p className="text-xs text-green-600">
-                        ➕ Sau nạp: {((deposit.userBalance || 0) + deposit.amount).toLocaleString('vi-VN')}đ
+                        ➕ Sau nạp: {(Number(deposit.userBalance || 0) + Number(deposit.amount || 0)).toLocaleString('vi-VN')}đ
                       </p>
                     </div>
 
-                    <div className="flex items-center space-x-2 mt-2">
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
                       <Badge className="bg-blue-500 text-white shadow-md">{deposit.method}</Badge>
+                      {(deposit.deposit_reference_code || deposit.depositReferenceCode) && (
+                        <span className="text-sm font-mono text-amber-600 dark:text-amber-400">
+                          Mã giao dịch (hệ thống): {deposit.deposit_reference_code || deposit.depositReferenceCode}
+                        </span>
+                      )}
                       <span className="text-sm text-muted-foreground">
-                        Mã GD: {deposit.transactionId}
+                        Mã GD ngân hàng: {deposit.transactionId || deposit.transaction_id || "—"}
                       </span>
                     </div>
                     <div className="mt-2 space-y-1">
@@ -161,9 +175,15 @@ export function Deposit({
                   </div>
                 </div>
               ))}
-            {pendingDeposits.filter(d => d.status !== "rejected").length === 0 && (
+            {filteredDeposits.length === 0 && (
               <p className="text-center text-muted-foreground py-8">
-                Không có yêu cầu nạp tiền nào
+                {pendingDeposits.length === 0
+                  ? 'Không có yêu cầu nạp tiền nào'
+                  : showRejected
+                    ? 'Không có yêu cầu nạp tiền bị từ chối.'
+                    : !includeApproved
+                      ? 'Không có yêu cầu chờ duyệt. Nhấn «Hiện đã duyệt» để xem lịch sử.'
+                      : 'Không có mục nào khớp bộ lọc hiện tại.'}
               </p>
             )}
           </div>

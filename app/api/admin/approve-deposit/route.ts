@@ -216,6 +216,22 @@ export async function POST(request: NextRequest) {
       } catch {
         /* non-critical */
       }
+
+      // ✅ NEW: Gửi email thông báo nạp tiền bị từ chối
+      try {
+        const recipientEmail = userEmail || (await (async () => {
+          const { getUserById } = await import('@/lib/database');
+          const user = await getUserById(dbUserIdForReject);
+          return user?.email;
+        })());
+        if (recipientEmail) {
+          const { sendDepositRejectionEmail } = await import('@/lib/email');
+          await sendDepositRejectionEmail(recipientEmail, Number(amount || deposit.amount));
+        }
+      } catch (emailError) {
+        const { logger } = await import('@/lib/logger');
+        logger.warn('Failed to send deposit rejection email (non-critical)', { error: emailError, userId: dbUserIdForReject });
+      }
     }
 
     // Send notification

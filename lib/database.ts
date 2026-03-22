@@ -15,6 +15,7 @@
  *   - 6543: Session Pooler (IPv4 compatibility)
  * ============================================================
  */
+import { randomInt } from 'crypto';
 import { Pool, PoolClient } from 'pg';
 import { logger } from './logger';
 
@@ -320,44 +321,38 @@ export async function updateBalance(
   const poolOrClient = client || pool;
 
   try {
-    // Lock row if in transaction
-    const lockQuery = client ? ' FOR UPDATE' : '';
-
-    // Get current balance (for validation only)
-    const userRes = await poolOrClient.query(
-      `SELECT balance FROM users WHERE id = $1${lockQuery}`,
-      [userId]
-    );
-
-    if (userRes.rows.length === 0) {
-      throw new Error('User not found');
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw new Error('Invalid amount');
     }
 
-    const currentBalance = parseFloat(userRes.rows[0].balance || '0');
-
-    if (type === 'decrease' && currentBalance < amount) {
-      throw new Error(`Insufficient balance. Current: ${currentBalance}, Required: ${amount}`);
-    }
-
-    // ✅ FIX: Use SQL arithmetic to avoid JS float precision loss
-    let updateResult;
+    // Một câu UPDATE atomic — tránh TOCTOU giữa SELECT và UPDATE khi không có FOR UPDATE
     if (type === 'increase') {
-      updateResult = await poolOrClient.query(
-        'UPDATE users SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING balance',
-        [amount, userId]
-      );
-    } else {
-      updateResult = await poolOrClient.query(
-        'UPDATE users SET balance = balance - $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND balance >= $1 RETURNING balance',
+      const updateResult = await poolOrClient.query(
+        'UPDATE users SET balance = balance + $1::numeric, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING balance',
         [amount, userId]
       );
       if (updateResult.rows.length === 0) {
-        throw new Error(`Insufficient balance for atomic update.`);
+        throw new Error('User not found');
       }
+      const newBalance = parseFloat(updateResult.rows[0].balance);
+      return { success: true, newBalance };
     }
 
-    const newBalance = parseFloat(updateResult.rows[0].balance);
-    return { success: true, newBalance };
+    const updateResult = await poolOrClient.query(
+      'UPDATE users SET balance = balance - $1::numeric, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND balance >= $1::numeric RETURNING balance',
+      [amount, userId]
+    );
+    if (updateResult.rows.length > 0) {
+      const newBalance = parseFloat(updateResult.rows[0].balance);
+      return { success: true, newBalance };
+    }
+
+    const exists = await poolOrClient.query('SELECT balance FROM users WHERE id = $1', [userId]);
+    if (exists.rows.length === 0) {
+      throw new Error('User not found');
+    }
+    const currentBalance = parseFloat(exists.rows[0].balance || '0');
+    throw new Error(`Insufficient balance. Current: ${currentBalance}, Required: ${amount}`);
   } catch (error) {
     logger.error('Error updating balance', error, { userId, amount, type });
     throw error;
@@ -583,7 +578,10 @@ export async function getUserIdByEmail(email: string): Promise<number | null> {
       'SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL',
       [email]
     );
-    return result.rows.length > 0 ? result.rows[0].id : null;
+    if (result.rows.length === 0) return null;
+    const raw = result.rows[0].id;
+    const id = typeof raw === 'number' ? raw : Number(raw);
+    return Number.isFinite(id) && id > 0 ? id : null;
   } catch (error) {
     logger.error('Error getting user ID by email', error, { email });
     return null;
@@ -878,9 +876,18 @@ export async function normalizeUserId(
 
     let numericId: number | null = null;
     const digitsOnly = str.trim();
+    // Chỉ coi chuỗi toàn số là `users.id` nếu vừa PostgreSQL int4. UID Firebase dạng số (vd. 117…)
+    // không được đưa vào $3::int — sẽ lỗi "out of range for type integer".
+    const PG_INT4_MAX = 2147483647;
     if (/^\d+$/.test(digitsOnly)) {
-      const nid = parseInt(digitsOnly, 10);
-      if (Number.isFinite(nid) && nid > 0) numericId = nid;
+      try {
+        const bi = BigInt(digitsOnly);
+        if (bi > 0n && bi <= BigInt(PG_INT4_MAX)) {
+          numericId = Number(bi);
+        }
+      } catch {
+        /* ignore invalid bigint */
+      }
     }
 
     // Một round-trip: giữ đúng thứ tự ưu tiên cũ (uid → email → username → id số)
@@ -978,6 +985,89 @@ export async function consumePasswordResetToken(token: string) {
 }
 
 // ============================================================
+// MÃ THAM CHIẾU NẠP TIỀN (16 ký tự A-Za-z0-9, unique toàn hệ thống, 1 user = 1 mã)
+// ============================================================
+
+const DEPOSIT_REF_CHARSET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+let ensureUserDepositRefTablePromise: Promise<void> | null = null;
+
+export async function ensureUserDepositReferenceTable(): Promise<void> {
+  // Chỉ bỏ qua DDL lúc `next build` / export — không dùng shouldSkipDbTest (VERCEL=1 trên máy local
+  // sẽ khiến bảng không bao giờ được tạo và JOIN deposits lỗi "relation does not exist").
+  if (isBuildTime) return;
+  if (!ensureUserDepositRefTablePromise) {
+    ensureUserDepositRefTablePromise = (async () => {
+      try {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS user_deposit_reference_codes (
+            user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            code VARCHAR(16) NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT user_deposit_ref_code_len CHECK (char_length(code) = 16)
+          );
+        `);
+        await pool.query(`
+          CREATE UNIQUE INDEX IF NOT EXISTS uq_user_deposit_reference_codes_code
+          ON user_deposit_reference_codes (code);
+        `);
+      } catch (e) {
+        ensureUserDepositRefTablePromise = null;
+        logger.error('ensureUserDepositReferenceTable failed', e);
+        throw e;
+      }
+    })();
+  }
+  await ensureUserDepositRefTablePromise;
+}
+
+function generateDepositReferenceCode(): string {
+  let out = '';
+  for (let i = 0; i < 16; i++) {
+    out += DEPOSIT_REF_CHARSET[randomInt(DEPOSIT_REF_CHARSET.length)];
+  }
+  return out;
+}
+
+/**
+ * Lấy hoặc tạo mã 16 ký tự cố định cho user (không trùng giữa các user).
+ */
+export async function getOrCreateUserDepositReferenceCode(userId: number): Promise<string> {
+  const uid = typeof userId === 'number' ? userId : Number(userId);
+  if (!Number.isFinite(uid) || uid <= 0 || !Number.isInteger(uid)) {
+    throw new Error('Invalid user id');
+  }
+  await ensureUserDepositReferenceTable();
+  const existing = await queryOne<{ code: string }>(
+    'SELECT code FROM user_deposit_reference_codes WHERE user_id = $1',
+    [uid]
+  );
+  if (existing?.code) return existing.code;
+
+  for (let attempt = 0; attempt < 24; attempt++) {
+    const code = generateDepositReferenceCode();
+    try {
+      const inserted = await queryOne<{ code: string }>(
+        `INSERT INTO user_deposit_reference_codes (user_id, code) VALUES ($1, $2)
+         ON CONFLICT (user_id) DO NOTHING
+         RETURNING code`,
+        [uid, code]
+      );
+      if (inserted?.code) return inserted.code;
+      const afterRace = await queryOne<{ code: string }>(
+        'SELECT code FROM user_deposit_reference_codes WHERE user_id = $1',
+        [uid]
+      );
+      if (afterRace?.code) return afterRace.code;
+    } catch (e: any) {
+      if (e?.code === '23505') continue;
+      throw e;
+    }
+  }
+  throw new Error('Could not allocate unique deposit reference code');
+}
+
+// ============================================================
 // DEPOSIT FUNCTIONS
 // ============================================================
 
@@ -985,10 +1075,12 @@ export async function consumePasswordResetToken(token: string) {
 let depositsSchemaCache: boolean | null = null;
 export async function getDeposits(userId?: number) {
   try {
+    await ensureUserDepositReferenceTable();
     let query = `
-      SELECT d.*, u.email, u.username
+      SELECT d.*, u.email, u.username, r.code AS deposit_reference_code
       FROM deposits d
       LEFT JOIN users u ON d.user_id = u.id
+      LEFT JOIN user_deposit_reference_codes r ON r.user_id = d.user_id
     `;
     const params: any[] = [];
 
