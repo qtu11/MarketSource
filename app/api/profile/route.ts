@@ -22,6 +22,7 @@ function buildProfileResponse(user: any, profileRow?: any) {
     emailVerified: Boolean(user.email_verified_at),
     name: user.name,
     avatarUrl: user.avatar_url,
+    balance: user.balance ? parseFloat(String(user.balance)) : 0,
     phone: profileRow?.phone || "",
     address: profileRow?.address || "",
     city: profileRow?.city || "",

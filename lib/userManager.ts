@@ -152,6 +152,7 @@ class UserManager {
         displayName: p.name,
         avatar: p.avatarUrl,
         avatar_url: p.avatarUrl,
+        balance: p.balance,
       } as UserData
     } catch {
       return null

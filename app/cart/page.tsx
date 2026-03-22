@@ -16,10 +16,12 @@ import { logger } from "@/lib/logger-client"
 import Link from "next/link"
 import Image from "next/image"
 
+import { useCurrentUser } from "@/hooks/use-current-user"
+
 export default function CartPage() {
   const router = useRouter()
   const [cartItems, setCartItems] = useState<any[]>([])
-  const [currentUser, setCurrentUser] = useState<any>(null)
+  const currentUser = useCurrentUser()
   const [isLoading, setIsLoading] = useState(false)
   const [mounted, setMounted] = useState(false)
 
@@ -30,7 +32,6 @@ export default function CartPage() {
   useEffect(() => {
     if (mounted) {
       loadCartItems()
-      loadCurrentUser()
     }
   }, [mounted])
 
@@ -41,28 +42,6 @@ export default function CartPage() {
     } catch (error) {
       logger.error('Error loading cart items', error)
       setCartItems([])
-    }
-  }
-
-  const loadCurrentUser = async () => {
-    try {
-      const { userManager } = await import('@/lib/userManager');
-      if (userManager.isLoggedIn()) {
-        const user = await userManager.getUser();
-        if (user) {
-          setCurrentUser(user);
-          return;
-        }
-      }
-
-      const isLoggedIn = getLocalStorage<string | null>("isLoggedIn", null) === "true"
-      const currentUserFromStorage = getLocalStorage<any>("currentUser", null) || getLocalStorage<any>("qtusdev_user", null)
-
-      if (isLoggedIn && currentUserFromStorage) {
-        setCurrentUser(currentUserFromStorage)
-      }
-    } catch (error) {
-      logger.error('Error loading current user', error)
     }
   }
 
@@ -100,7 +79,7 @@ export default function CartPage() {
   }
 
   const handleCheckout = async () => {
-    if (isLoading) return // ✅ BUG #30 FIX: Chặn double click khi đang xử lý
+    if (isLoading) return 
     if (!currentUser) {
       alert("Vui lòng đăng nhập để thanh toán!")
       router.push("/auth/login")
@@ -113,14 +92,15 @@ export default function CartPage() {
     }
 
     const totalPrice = getTotalPrice()
+    const userBalance = Number(currentUser.balance || 0)
 
     if (isNaN(totalPrice) || totalPrice < 0 || !isFinite(totalPrice)) {
       alert("Dữ liệu giỏ hàng không hợp lệ!")
       return
     }
 
-    if (currentUser.balance < totalPrice) {
-      alert(`Số dư không đủ! Bạn cần ${(totalPrice - currentUser.balance).toLocaleString('vi-VN')}đ nữa.`)
+    if (userBalance < totalPrice) {
+      alert(`Số dư không đủ! Bạn cần ${(totalPrice - userBalance).toLocaleString('vi-VN')}đ nữa.`)
       router.push("/deposit")
       return
     }
@@ -131,7 +111,6 @@ export default function CartPage() {
       const deviceInfo = getDeviceInfo()
       const ipAddress = await getIPAddress()
       
-      // ✅ BUG #26 FIX: Sử dụng Bulk Purchase API thay vì vòng lặp N+1
       const token = getLocalStorage<string | null>('firebaseToken', null) || getLocalStorage<string | null>('authToken', null);
       const { getCsrfHeaders } = await import('@/lib/csrf-client')
       const csrf = await getCsrfHeaders()
@@ -164,11 +143,9 @@ export default function CartPage() {
         throw new Error(bulkResult.error || 'Thanh toán thất bại');
       }
 
-      // Xử lý kết quả
       const itemsPurchased = bulkResult.results || [];
       const successfulItems = itemsPurchased.filter((r: any) => r.success).map((r: any) => r.id);
       
-      // Xoá các sản phẩm thành công khỏi giỏ hàng
       const remainingCart = cartItems.filter(item => !successfulItems.includes(item.id));
       setCartItems(remainingCart);
       
@@ -182,25 +159,10 @@ export default function CartPage() {
       if (successfulItems.length < cartItems.length) {
         alert('Một số sản phẩm thanh toán bị lỗi. Giỏ hàng đã được cập nhật!');
         setIsLoading(false);
+        // Force re-fetch user balance immediately
+        window.dispatchEvent(new Event('userUpdated'));
         return;
       }
-
-      const { userManager } = await import('@/lib/userManager');
-      const updatedUserData = await userManager.getUser();
-      const updatedUser = {
-        ...currentUser,
-        ...(updatedUserData || {}), // ✅ Ensure we get all DB fields
-        balance: updatedUserData?.balance !== undefined ? updatedUserData.balance : currentUser.balance - totalPrice,
-        totalSpent: updatedUserData?.totalSpent !== undefined ? updatedUserData.totalSpent : ((currentUser.totalSpent || 0) + totalPrice)
-      }
-      setLocalStorage("currentUser", updatedUser)
-      const registeredUsers = getLocalStorage<any[]>("registeredUsers", [])
-      const updatedUsers = registeredUsers.map((u: any) =>
-        (u.id === currentUser.id || u.uid === currentUser.uid || u.email === currentUser.email) ? updatedUser : u
-      )
-      setLocalStorage("registeredUsers", updatedUsers)
-      setLocalStorage("currentUser", updatedUser)
-      setCurrentUser(updatedUser)
 
       const userPurchases = getLocalStorage<any[]>("userPurchases", [])
       const newPurchases = cartItems.map(item => ({
@@ -236,6 +198,8 @@ export default function CartPage() {
       setCartItems([])
       removeLocalStorage('cartItems')
       window.dispatchEvent(new Event('cartUpdated'))
+      
+      // ✅ Trigger SWR revalidation to update balance
       window.dispatchEvent(new Event('userUpdated'))
 
       const totalPaid = cartItems
@@ -506,22 +470,22 @@ export default function CartPage() {
                                 {(currentUser.balance || 0).toLocaleString('vi-VN')}đ
                               </span>
                             </div>
-                            {currentUser.balance >= getTotalPrice() && (
+                            {(currentUser.balance || 0) >= getTotalPrice() && (
                               <div className="flex items-center justify-between">
                                 <span className="text-sm text-gray-500 dark:text-gray-400">Còn lại sau mua</span>
                                 <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                                  {(currentUser.balance - getTotalPrice()).toLocaleString('vi-VN')}đ
+                                  {((currentUser.balance || 0) - getTotalPrice()).toLocaleString('vi-VN')}đ
                                 </span>
                               </div>
                             )}
-                            {currentUser.balance < getTotalPrice() && (
+                            {(currentUser.balance || 0) < getTotalPrice() && (
                               <p className="text-sm text-red-500 font-medium mt-1">
-                                ⚠ Thiếu {(getTotalPrice() - currentUser.balance).toLocaleString('vi-VN')}đ
+                                ⚠ Thiếu {(getTotalPrice() - (currentUser.balance || 0)).toLocaleString('vi-VN')}đ
                               </p>
                             )}
                           </div>
 
-                          {currentUser.balance < getTotalPrice() ? (
+                          {(currentUser.balance || 0) < getTotalPrice() ? (
                             <div className="space-y-2">
                               <Button asChild className="w-full bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-white rounded-xl h-12 shadow-lg shadow-emerald-500/20">
                                 <Link href="/deposit">

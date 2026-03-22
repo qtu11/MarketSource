@@ -61,94 +61,119 @@ export function NotificationCenter() {
   }, [router])
 
   useEffect(() => {
-    const eventSource = new EventSource("/api/notifications/stream")
+    let eventSource: EventSource | null = null
+    let reconnectTimeout: NodeJS.Timeout | null = null
+    let retryCount = 0
 
-    eventSource.onmessage = (event) => {
-      try {
-        const notification = JSON.parse(event.data)
-        
-        const currentUserId = (session?.user as any)?.id;
-        const isAdmin = (session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'superadmin';
+    const connect = () => {
+      if (reconnectTimeout) clearTimeout(reconnectTimeout)
+      
+      console.log(`Real-time: Attempting to connect SSE (Attempt ${retryCount + 1})`)
+      eventSource = new EventSource("/api/notifications/stream")
 
-        // LỌC THÔNG BÁO:
-        // 1. Nếu là thông báo cá nhân (có user_id) -> chỉ hiện nếu đúng ID
-        // 2. Nếu là thông báo hệ thống (deposit_created, withdrawal_created, order_created) -> hiện cho Admin
-        const systemEvents = ['deposit_created', 'withdrawal_created', 'order_created'];
-        const isSystemEvent = systemEvents.includes(notification.type);
-        
-        if (isSystemEvent) {
-          if (!isAdmin) return; // Chỉ admin mới nhận thông báo hệ thống này
-        } else if (currentUserId && notification.user_id && String(notification.user_id) !== String(currentUserId)) {
-          return; // Thông báo cá nhân của người khác
-        }
+      eventSource.onopen = () => {
+        console.log("Real-time: SSE Connection opened")
+        retryCount = 0 // Reset retry count on successful connection
+      }
 
-        // HIỆU ỨNG VÀ ĐỒNG BỘ DỮ LIỆU
-        const isMajorUserEvent = [
-          'deposit_approved',
-          'purchase_success',
-          'withdrawal_approved',
-          'withdrawal_rejected'
-        ].includes(notification.type)
+      eventSource.onmessage = (event) => {
+        try {
+          // SSE Keep-alive/ping message can be ignored
+          if (event.data === ': ping') return
 
-        // Nếu là sự kiện liên quan tiền tệ/giao dịch của User -> Sync balance
-        if (isMajorUserEvent) {
-          syncData()
-        }
+          const notification = JSON.parse(event.data)
+          
+          const currentUserId = (session?.user as any)?.id;
+          const isAdmin = (session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'superadmin';
 
-        // Nếu là sự kiện hệ thống cho Admin -> Phát tín hiệu để Admin Panel load lại bảng
-        if (isSystemEvent && isAdmin) {
-          if (notification.type === 'deposit_created') {
-            window.dispatchEvent(new Event('depositsUpdated'));
-          } else if (notification.type === 'withdrawal_created') {
-            window.dispatchEvent(new Event('withdrawalsUpdated'));
-          } else if (notification.type === 'order_created') {
-            window.dispatchEvent(new Event('purchasesUpdated'));
+          /**
+           * ✅ SECURITY: Mặc dù server đã lọc, chúng ta vẫn giữ logic lọc tại client
+           * để đảm bảo tính nhất quán và layer bảo mật thứ hai.
+           */
+          const systemEvents = ['deposit_created', 'withdrawal_created', 'order_created'];
+          const isSystemEvent = systemEvents.includes(notification.type);
+          
+          if (isSystemEvent) {
+            if (!isAdmin) return;
+          } else if (currentUserId && notification.user_id && String(notification.user_id) !== String(currentUserId)) {
+            return;
           }
-          router.refresh();
-          toast.info(`🔔 Admin: ${notification.message}`, { duration: 8000, position: 'bottom-right' });
-          return; // Admin không cần hiện pháo hoa cho yêu cầu mới
-        }
 
-        if (isMajorUserEvent && notification.type !== 'withdrawal_rejected') {
-          // HIỂN THỊ PHÁO HOA
-          setCelebration({
-            isOpen: true,
-            title: notification.type === 'deposit_approved' ? "Nạp tiền thành công!" : 
-                   notification.type === 'purchase_success' ? "Mua hàng thành công!" :
-                   "Rút tiền thành công!",
-            message: notification.message,
-            type: notification.type
-          })
-          toast.success(notification.message, { duration: 5000 })
-        } else {
-          // HIỂN THỊ TOAST
-          const isError = notification.type.includes('rejected') || notification.type.includes('failed')
-          if (isError) {
-            toast.error(notification.message, { duration: 6000 })
+          // HIỆU ỨNG VÀ ĐỒNG BỘ DỮ LIỆU
+          const isMajorUserEvent = [
+            'deposit_approved',
+            'purchase_success',
+            'withdrawal_approved',
+            'withdrawal_rejected'
+          ].includes(notification.type)
+
+          if (isMajorUserEvent) {
+            syncData()
+          }
+
+          if (isSystemEvent && isAdmin) {
+            if (notification.type === 'deposit_created') {
+              window.dispatchEvent(new Event('depositsUpdated'));
+            } else if (notification.type === 'withdrawal_created') {
+              window.dispatchEvent(new Event('withdrawalsUpdated'));
+            } else if (notification.type === 'order_created') {
+              window.dispatchEvent(new Event('purchasesUpdated'));
+            }
+            router.refresh();
+            toast.info(`🔔 Admin: ${notification.message}`, { duration: 8000, position: 'bottom-right' });
+            return;
+          }
+
+          if (isMajorUserEvent && notification.type !== 'withdrawal_rejected') {
+            setCelebration({
+              isOpen: true,
+              title: notification.type === 'deposit_approved' ? "Nạp tiền thành công!" : 
+                     notification.type === 'purchase_success' ? "Mua hàng thành công!" :
+                     "Rút tiền thành công!",
+              message: notification.message,
+              type: notification.type
+            })
+            toast.success(notification.message, { duration: 5000 })
           } else {
-            toast.info(notification.message, { duration: 5000 })
+            const isError = notification.type.includes('rejected') || notification.type.includes('failed')
+            if (isError) {
+              toast.error(notification.message, { duration: 6000 })
+            } else {
+              toast.info(notification.message, { duration: 5000 })
+            }
           }
+        } catch (err) {
+          console.error("Real-time: Error parsing notification data", err)
         }
+      }
 
-      } catch (err) {
-        console.error("Error parsing notification data", err)
+      eventSource.onerror = (err) => {
+        console.warn("Real-time: SSE Connection failed, scheduled reconnect", err)
+        if (eventSource) {
+          eventSource.close()
+          eventSource = null
+        }
+        
+        // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
+        const delay = Math.min(2000 * Math.pow(2, retryCount), 30000)
+        reconnectTimeout = setTimeout(() => {
+          retryCount++
+          connect()
+        }, delay)
       }
     }
 
-    eventSource.onerror = (err) => {
-      // console.error("EventSource failed:", err)
-      eventSource.close()
-      
-      // Thử kết nối lại sau 10s nếu rớt
-      setTimeout(() => {
-        // Re-run effect logic
-      }, 10000)
-    }
+    connect()
 
     return () => {
-      eventSource.close()
+      if (eventSource) {
+        eventSource.close()
+      }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout)
+      }
     }
-  }, [session])
+  }, [session, router, syncData])
 
   return (
     <>

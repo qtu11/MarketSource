@@ -1784,6 +1784,17 @@ export async function approveWithdrawalAndUpdateBalance(
       [approvedBy, withdrawalId]
     );
 
+    // ✅ NEW: Thông báo real-time khi duyệt rút tiền
+    try {
+      await createNotification({
+        userId,
+        type: 'withdrawal_approved',
+        message: `Yêu cầu rút ${amount.toLocaleString('vi-VN')}đ của bạn đã được duyệt!`
+      });
+    } catch (err) {
+      logger.warn('Failed to notify withdrawal approval', { withdrawalId });
+    }
+
     return {
       success: true,
       newBalance: currentBalance,
@@ -2049,6 +2060,17 @@ export async function createBulkPurchase(purchaseData: {
         [dbUserId, item.id, item.amount]
       );
       purchaseIds.push(Number(pRes.rows[0].id));
+    }
+
+    // 6. Send notification for real-time celebration
+    try {
+      await createNotification({
+        userId: dbUserId,
+        type: 'purchase_success',
+        message: `Chúc mừng! Bạn đã mua thành công ${validatedItems.length} sản phẩm.`
+      });
+    } catch (notifyError) {
+      logger.error('Failed to send purchase notification', notifyError);
     }
 
     return {
