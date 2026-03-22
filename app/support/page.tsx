@@ -41,6 +41,7 @@ export default function SupportPage() {
     subject: "",
     message: ""
   })
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const [isTyping, setIsTyping] = useState(false)
 
@@ -133,12 +134,16 @@ export default function SupportPage() {
   }, [currentUser, loadChatHistory])
 
   const scrollToBottom = useCallback(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (scrollAreaRef.current) {
+      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+    } else {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   }, [])
 
   useEffect(() => {
     scrollToBottom()
-  }, [chatMessages, scrollToBottom])
+  }, [chatMessages.length, scrollToBottom])
 
   const handleSendChatMessage = async () => {
     if (!messageText.trim() || isLoadingChat) return
@@ -399,7 +404,7 @@ export default function SupportPage() {
                     {/* Chat Messages */}
                     <div className="flex flex-col h-[500px] border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-gray-50 dark:bg-gray-900/50 relative shadow-inner">
                       {/* Messages Area */}
-                      <div className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth">
+                      <div ref={scrollAreaRef} className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth">
                         {chatMessages.length === 0 ? (
                           <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-50">
                             <MessageCircle className="w-12 h-12 text-gray-400" />

@@ -27,29 +27,41 @@ function sanitizeMessage(message: string): string {
 
 const messageSchema = z.object({
   receiverId: z.number().int().positive().optional(),
+  userId: z.string().or(z.number()).optional(),
   message: z.string().min(1).max(MAX_MESSAGE_LENGTH),
+  isAdmin: z.boolean().optional(),
 });
 
 /**
  * ✅ FIX: Verify user từ JWT hoặc localStorage user data
  * Thống nhất auth với login flow (không yêu cầu Firebase)
  */
-async function verifyAuthUser(request: NextRequest): Promise<{ email: string; uid?: string } | null> {
+async function verifyAuthUser(request: NextRequest): Promise<{ email: string; uid?: string; role?: string } | null> {
   try {
-    // Cách 1: JWT token trong cookie
+    // Cách 1: JWT token trong cookie (ưu tiên role từ cookie admin nếu có)
     const cookieStore = await cookies();
+    const adminToken = cookieStore.get('admin-token');
+    
+    if (adminToken) {
+      try {
+        const jwt = await import('@/lib/jwt');
+        const payload = await (jwt as any).verifyToken?.(adminToken.value);
+        if (payload?.email && payload?.role === 'admin') {
+          return { email: payload.email, uid: payload.uid || payload.sub, role: 'admin' };
+        }
+      } catch { /* ignore fallback */ }
+    }
+
     const tokenCookie = cookieStore.get('auth-token') || cookieStore.get('next-auth.session-token');
     if (tokenCookie) {
       try {
         const jwt = await import('@/lib/jwt');
         const payload = await (jwt as any).verifyToken?.(tokenCookie.value);
         if (payload?.email) {
-          return { email: payload.email, uid: payload.uid || payload.sub };
+          return { email: payload.email, uid: payload.uid || payload.sub, role: payload.role };
         }
       } catch { /* JWT verify failed, try other methods */ }
     }
-
-    // ✅ SECURITY FIX: Cách 2 (x-user-email header) ĐÃ BỊ XÓA — Có thể bị mạo danh
 
     // Cách 3: Firebase token (backward compatible)
     try {
@@ -84,7 +96,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: validation.error.errors[0]?.message }, { status: 400 });
     }
 
-    const { receiverId, message } = validation.data;
+    const { receiverId, userId, message, isAdmin: frontendIsAdmin } = validation.data;
     const sanitizedMessage = sanitizeMessage(message);
 
     if (!sanitizedMessage) {
@@ -101,7 +113,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    // Kiểm tra quyền admin một cách tuyệt đối (bao gồm cả supperadmin & admin table)
+    // ✅ FIX BUG: Kiểm tra quyền admin từ CẢ Token VÀ Database
     const adminCheck = await queryOne<any>(
       `SELECT a.id 
        FROM admin a
@@ -113,17 +125,20 @@ export async function POST(request: NextRequest) {
        LIMIT 1`,
       [sender.id]
     );
-    const isAdmin = adminCheck !== null;
+    
+    // Nếu session có role='admin' hoặc DB có role='admin'
+    const isAdmin = adminCheck !== null || authUser.role === 'admin';
     const senderId = sender.id;
 
     let targetUserId: number;
     let targetAdminId: number | null;
 
     if (isAdmin) {
-      if (!receiverId) {
+      const targetId = receiverId || userId;
+      if (!targetId) {
         return NextResponse.json({ success: false, error: 'Admin cần chọn khách hàng để gửi tin' }, { status: 400 });
       }
-      targetUserId = receiverId;
+      targetUserId = Number(targetId);
       targetAdminId = senderId;
     } else {
       targetUserId = senderId;
@@ -206,7 +221,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'User not found in database' }, { status: 404 });
     }
 
-    // ✅ Check if admin
+    // ✅ Check if admin từ DB HOẶC từ AuthToken
     const adminCheck = await query<any>(
       `SELECT a.id 
        FROM admin a
@@ -217,7 +232,7 @@ export async function GET(request: NextRequest) {
        WHERE u.id = $1 AND u.role IN ('admin', 'superadmin')`,
       [currentUserId]
     );
-    const isAdmin = adminCheck.length > 0;
+    const isAdmin = adminCheck.length > 0 || authUser.role === 'admin';
 
     // Get chats với pagination ở database level
     let chats;
