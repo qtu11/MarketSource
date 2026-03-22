@@ -111,6 +111,26 @@ export async function POST(request: NextRequest) {
 
     const product = result?.id ? await getProductById(result.id) : null;
 
+    try {
+      const { logAdminAction, resolveAdminIdForAudit } = await import('@/lib/audit-logger');
+      const adminSession = await requireAdmin(request);
+      const adminId = await resolveAdminIdForAudit({
+        email: adminSession.email,
+        uid: (adminSession as any).uid,
+      });
+      await logAdminAction({
+        adminId,
+        adminEmail: adminSession.email || undefined,
+        action: 'CREATE_PRODUCT',
+        targetType: 'product',
+        targetId: result?.id,
+        details: { title: productData.title },
+        ipAddress: request.headers.get('x-forwarded-for') || undefined,
+      });
+    } catch (e) {
+      logError('Failed to log admin action (CREATE_PRODUCT)', e);
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Product created successfully',

@@ -6,9 +6,9 @@ let cachedSecretKey: string | null = null;
 function getSecret(): Uint8Array {
   const secretKey = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET;
 
-  if (!secretKey) {
+  if (!secretKey || secretKey.length < 32) {
     throw new Error(
-      'JWT_SECRET or NEXTAUTH_SECRET must be set in environment variables.'
+      'JWT_SECRET or NEXTAUTH_SECRET must be set in environment variables and must be at least 32 characters long.'
     );
   }
 

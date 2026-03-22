@@ -13,9 +13,6 @@ export const runtime = 'nodejs'
  */
 export async function POST(request: NextRequest) {
   try {
-    const rl = await checkRateLimitAndRespond(request, 3, 3600, 'resend-verify')
-    if (rl) return rl
-
     let body: { email?: string } = {}
     try {
       body = await request.json()
@@ -24,6 +21,15 @@ export async function POST(request: NextRequest) {
     }
 
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+
+    // ✅ BUG #5 FIX: Rate limiting per-IP và per-Email
+    const ipRateLimit = await checkRateLimitAndRespond(request, 3, 3600, 'resend-verify-ip')
+    if (ipRateLimit) return ipRateLimit
+
+    if (email) {
+      const emailRateLimit = await checkRateLimitAndRespond(request, 3, 3600, 'resend-verify-email', email)
+      if (emailRateLimit) return emailRateLimit
+    }
     if (!email) {
       return NextResponse.json({ success: false, error: 'Email là bắt buộc' }, { status: 400 })
     }

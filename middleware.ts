@@ -24,7 +24,7 @@ async function isAdminAuthorized(request: NextRequest): Promise<boolean> {
   if (!raw) return false
 
   const secretKey = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET
-  if (!secretKey) return false
+  if (!secretKey || secretKey.length < 32) return false
 
   try {
     const secret = new TextEncoder().encode(secretKey)
@@ -56,7 +56,7 @@ async function isDashboardUserAuthorized(request: NextRequest): Promise<boolean>
   if (!raw) return false
 
   const secretKey = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET
-  if (!secretKey) return false
+  if (!secretKey || secretKey.length < 32) return false
 
   try {
     const secret = new TextEncoder().encode(secretKey)

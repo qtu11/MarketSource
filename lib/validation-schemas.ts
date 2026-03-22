@@ -35,9 +35,22 @@ export const loginSchema = z.object({
 })
 
 export const registerSchema = z.object({
-  name: z.string().min(2, 'Tên phải có ít nhất 2 ký tự').max(100),
+  name: z.string().min(2, 'Tên phải có ít nhất 2 ký tự').max(50, 'Tên quá dài'),
+  username: z.string().regex(/^[a-zA-Z0-9_]{3,30}$/, 'Username chỉ gồm chữ, số và dấu gạch dưới, dài 3-30 ký tự').optional(),
   email: emailSchema,
   password: passwordSchema,
+  referralCode: z.string().max(50).optional(),
+  captchaToken: z.string().optional(),
+})
+
+export const profileUpdateSchema = z.object({
+  name: z.string().min(2, 'Tên phải có ít nhất 2 ký tự').max(50, 'Tên quá dài').optional(),
+  username: z.string().regex(/^[a-zA-Z0-9_]{3,30}$/, 'Username chỉ gồm chữ, số và dấu gạch dưới, dài 3-30 ký tự').optional(),
+  email: emailSchema.optional(),
+  avatarUrl: z.string().url('URL ảnh đại diện không hợp lệ')
+    .max(500)
+    .refine(val => !val || val.toLowerCase().startsWith('http://') || val.toLowerCase().startsWith('https://'), 'URL phải là http hoặc https')
+    .optional().nullable(),
 })
 
 // Deposit schemas

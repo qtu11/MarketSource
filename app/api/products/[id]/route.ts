@@ -132,6 +132,26 @@ export async function PUT(
       downloadCount: productData.downloadCount ?? undefined,
     });
 
+    try {
+      const { logAdminAction, resolveAdminIdForAudit } = await import('@/lib/audit-logger');
+      const adminSession = await requireAdmin(request);
+      const adminId = await resolveAdminIdForAudit({
+        email: adminSession.email,
+        uid: (adminSession as any).uid,
+      });
+      await logAdminAction({
+        adminId,
+        adminEmail: adminSession.email || undefined,
+        action: 'UPDATE_PRODUCT',
+        targetType: 'product',
+        targetId: productId,
+        details: { title: productData.title },
+        ipAddress: request.headers.get('x-forwarded-for') || undefined,
+      });
+    } catch (e: any) {
+      logger.warn('Failed to log admin action (UPDATE_PRODUCT)', { error: e?.message });
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Product updated successfully',
@@ -196,6 +216,26 @@ export async function DELETE(
 
     // Delete product
     await deleteProduct(productId);
+
+    try {
+      const { logAdminAction, resolveAdminIdForAudit } = await import('@/lib/audit-logger');
+      const adminSession = await requireAdmin(request);
+      const adminId = await resolveAdminIdForAudit({
+        email: adminSession.email,
+        uid: (adminSession as any).uid,
+      });
+      await logAdminAction({
+        adminId,
+        adminEmail: adminSession.email || undefined,
+        action: 'DELETE_PRODUCT',
+        targetType: 'product',
+        targetId: productId,
+        details: { title: product.title },
+        ipAddress: request.headers.get('x-forwarded-for') || undefined,
+      });
+    } catch (e: any) {
+      logger.warn('Failed to log admin action (DELETE_PRODUCT)', { error: e?.message });
+    }
 
     return NextResponse.json({
       success: true,

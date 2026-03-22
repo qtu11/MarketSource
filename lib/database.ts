@@ -646,7 +646,8 @@ export async function createOrUpdateUser(userData: {
         paramIndex++;
       }
 
-      if (userData.passwordHash !== undefined) {
+      // ✅ CRITICAL BUG #3 FIX: Password update phải rõ ràng (chống ghi đè OAuth)
+      if (userData.passwordHash !== undefined && userData.passwordHash !== null) {
         updates.push(`password_hash = $${paramIndex}`);
         params.push(userData.passwordHash);
         paramIndex++;

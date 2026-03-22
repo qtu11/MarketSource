@@ -27,12 +27,24 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    email = body.email?.trim().toLowerCase();
-    password = body.password;
-    name = body.name;
-    username = body.username;
-    const referralCode = typeof body.referralCode === 'string' ? body.referralCode.trim() : '';
-    const captchaToken = body.captchaToken;
+    
+    // ✅ BUG #7 FIX: Thêm Input Validation bằng Zod Schema nghiêm ngặt
+    const { registerSchema } = await import('@/lib/validation-schemas');
+    const validation = registerSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        { success: false, error: validation.error.errors[0]?.message || 'Dữ liệu không hợp lệ' },
+        { status: 400 }
+      );
+    }
+    
+    // Lấy data đã qua validate
+    email = validation.data.email.trim().toLowerCase();
+    password = validation.data.password;
+    name = validation.data.name;
+    username = validation.data.username;
+    const referralCode = validation.data.referralCode?.trim() || '';
+    const captchaToken = validation.data.captchaToken;
 
     // ✅ PoW Captcha verification
     const { verifyPoWCaptcha } = await import('@/lib/pow-captcha');
@@ -40,35 +52,6 @@ export async function POST(request: NextRequest) {
     if (!captchaResult.success) {
       return NextResponse.json(
         { success: false, error: 'Xác minh captcha thất bại. Vui lòng thử lại.' },
-        { status: 400 }
-      );
-    }
-
-    // Validation
-    if (!email || !password) {
-      return NextResponse.json(
-        { success: false, error: 'Email và mật khẩu là bắt buộc' },
-        { status: 400 }
-      );
-    }
-
-    // ✅ FIX: Sync với passwordSchema - min 8 ký tụ + phải có só và chũ cái
-    if (password.length < 8) {
-      return NextResponse.json(
-        { success: false, error: 'Mật khẩu phải có ít nhất 8 ký tự' },
-        { status: 400 }
-      );
-    }
-    if (!/[0-9]/.test(password) || !/[A-Za-z]/.test(password)) {
-      return NextResponse.json(
-        { success: false, error: 'Mật khẩu phải chứa cả chữ cái và chữ số' },
-        { status: 400 }
-      );
-    }
-
-    if (!name || name.length < 2) {
-      return NextResponse.json(
-        { success: false, error: 'Tên phải có ít nhất 2 ký tự' },
         { status: 400 }
       );
     }

@@ -21,11 +21,22 @@ export async function POST(request: NextRequest) {
       );
     }
     const body = parsed.data as Record<string, unknown>;
-    const email =
-      typeof body.email === 'string' ? body.email.trim().toLowerCase() : undefined;
-    const name = typeof body.name === 'string' ? body.name : undefined;
-    const username = typeof body.username === 'string' ? body.username : undefined;
-    const avatarUrl = typeof body.avatarUrl === 'string' ? body.avatarUrl : undefined;
+    
+    // ✅ BUG #7 FIX: Thêm Input Validation bằng Zod Schema
+    const { profileUpdateSchema } = await import('@/lib/validation-schemas');
+    const validation = profileUpdateSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        { success: false, error: validation.error.errors[0]?.message || 'Dữ liệu không hợp lệ' },
+        { status: 400 }
+      );
+    }
+
+    const emailVal = typeof validation.data.email === 'string' ? validation.data.email.trim().toLowerCase() : undefined;
+    const name = typeof validation.data.name === 'string' ? validation.data.name : undefined;
+    const username = typeof validation.data.username === 'string' ? validation.data.username : undefined;
+    const avatarUrl = typeof validation.data.avatarUrl === 'string' ? validation.data.avatarUrl : undefined;
+    const email = emailVal;
     const providedIp = typeof body.ipAddress === 'string' ? body.ipAddress : undefined;
 
     if (!email) {

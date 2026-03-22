@@ -18,12 +18,19 @@ const resetSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    // ✅ BUG #11 FIX: Rate limiting cho OTP verification (5 attempts / 15 mins)
+    // ✅ BUG #11 FIX: Rate limiting cho OTP verification (ip)
     const { checkRateLimitAndRespond } = await import('@/lib/rate-limit');
-    const rateLimitResponse = await checkRateLimitAndRespond(request, 5, 900, 'reset-password-verify');
+    const rateLimitResponse = await checkRateLimitAndRespond(request, 5, 900, 'reset-password-verify-ip');
     if (rateLimitResponse) return rateLimitResponse;
 
     const body = await request.json();
+    
+    // ✅ Thêm rate limiting theo email (Tránh distributed brute-force)
+    const emailToRateLimit = body?.email?.toString()?.trim()?.toLowerCase();
+    if (emailToRateLimit) {
+      const emailRateLimit = await checkRateLimitAndRespond(request, 5, 900, 'reset-password-verify-email', emailToRateLimit);
+      if (emailRateLimit) return emailRateLimit;
+    }
     const validation = resetSchema.safeParse(body);
 
     if (!validation.success) {

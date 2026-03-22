@@ -108,8 +108,8 @@ export async function POST(request: NextRequest) {
     // Đảm bảo /api/save-user có thể verify identity khi userManager.setUser() gọi
     // ✅ SECURITY FIX: Loại bỏ fallback-secret (BUG #41)
     const jwtSecret = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET;
-    if (!jwtSecret) {
-      throw new Error('Cấu hình hệ thống lỗi: Thiếu JWT_SECRET');
+    if (!jwtSecret || jwtSecret.length < 32) {
+      throw new Error('Cấu hình hệ thống lỗi: Thiếu JWT_SECRET hoặc độ dài không đủ an toàn (>=32)');
     }
     const secret = new TextEncoder().encode(jwtSecret);
     const authToken = await new SignJWT({
