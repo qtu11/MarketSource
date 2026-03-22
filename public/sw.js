@@ -58,7 +58,7 @@ self.addEventListener('fetch', (event) => {
         const responseToCache = response.clone();
         
         // Final check for GET and successful response
-        if (event.request.method === 'GET' && response.status === 200) {
+        if (event.request.method === 'GET' && response.status === 200 && !url.protocol.startsWith('chrome-extension')) {
           caches.open(CACHE_NAME)
             .then((cache) => {
               try {
