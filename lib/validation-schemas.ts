@@ -51,6 +51,13 @@ export const profileUpdateSchema = z.object({
     .max(500)
     .refine(val => !val || val.toLowerCase().startsWith('http://') || val.toLowerCase().startsWith('https://'), 'URL phải là http hoặc https')
     .optional().nullable(),
+  phone: z.string().regex(/^(\+84|0)[0-9]{9,10}$/, 'Số điện thoại không hợp lệ').optional().nullable(),
+  address: z.string().max(255, 'Địa chỉ quá dài').optional().nullable(),
+  city: z.string().max(100).optional().nullable(),
+  country: z.string().max(100).optional().nullable(),
+  postalCode: z.string().max(20).optional().nullable(),
+  socialLinks: z.record(z.string().nullable()).optional().nullable(),
+  twoFactorEnabled: z.boolean().optional(),
 })
 
 // Deposit schemas

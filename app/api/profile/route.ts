@@ -7,6 +7,9 @@ import {
   upsertUserProfile,
 } from "@/lib/database"
 import { logger } from "@/lib/logger"
+import { checkRateLimitAndRespond } from "@/lib/rate-limit"
+import { validateRequest, getClientIP } from "@/lib/api-auth"
+import { profileUpdateSchema } from "@/lib/validation-schemas"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -30,7 +33,7 @@ function buildProfileResponse(user: any, profileRow?: any) {
   }
 }
 
-function sanitizeSocialLinks(input?: Record<string, string | null>) {
+function sanitizeSocialLinks(input?: any) {
   if (!input) return null
   const allowed = ["google", "github", "facebook", "twitter", "website"]
   const cleaned: Record<string, string> = {}
@@ -45,6 +48,9 @@ function sanitizeSocialLinks(input?: Record<string, string | null>) {
 
 export async function GET(request: NextRequest) {
   try {
+    const rateLimitResponse = await checkRateLimitAndRespond(request, 30, 60, 'profile-get');
+    if (rateLimitResponse) return rateLimitResponse;
+
     const { searchParams } = new URL(request.url)
     let email = searchParams.get("email")
     const userIdParam = searchParams.get("userId")
@@ -108,7 +114,16 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    const rateLimitResponse = await checkRateLimitAndRespond(request, 10, 60, 'profile-put');
+    if (rateLimitResponse) return rateLimitResponse;
+
     const body = await request.json()
+    const validation = validateRequest(body, profileUpdateSchema);
+    
+    if (!validation.valid || !validation.data) {
+      return NextResponse.json({ success: false, error: validation.error || "Dữ liệu không hợp lệ" }, { status: 400 });
+    }
+
     const {
       email,
       name,
@@ -120,7 +135,7 @@ export async function PUT(request: NextRequest) {
       postalCode,
       socialLinks,
       twoFactorEnabled,
-    } = body
+    } = validation.data
 
     if (!email) {
       return NextResponse.json({ success: false, error: "Thiếu email" }, { status: 400 })
@@ -152,7 +167,8 @@ export async function PUT(request: NextRequest) {
       await createOrUpdateUser({
         email,
         name,
-        avatarUrl,
+        avatarUrl: avatarUrl || undefined,
+        ipAddress: getClientIP(request),
       })
     }
 
@@ -175,14 +191,30 @@ export async function PUT(request: NextRequest) {
 
     const savedProfile = await upsertUserProfile({
       userId: user.id,
-      phone: mergedProfile.phone,
-      address: mergedProfile.address,
-      city: mergedProfile.city,
-      country: mergedProfile.country,
-      postalCode: mergedProfile.postalCode,
-      socialLinks: mergedProfile.socialLinks,
+      phone: mergedProfile.phone || undefined,
+      address: mergedProfile.address || undefined,
+      city: mergedProfile.city || undefined,
+      country: mergedProfile.country || undefined,
+      postalCode: mergedProfile.postalCode || undefined,
+      socialLinks: mergedProfile.socialLinks || undefined,
       twoFactorEnabled: mergedProfile.twoFactorEnabled,
     })
+
+    // Audit log
+    try {
+      const { logAdminAction, resolveAdminIdForAudit } = await import('@/lib/audit-logger');
+      const actorId = isAdmin ? await resolveAdminIdForAudit({ email: (authUser as any)?.email, uid: (authUser as any)?.uid }) : user.id;
+      
+      await logAdminAction({
+        adminId: typeof actorId === 'number' ? actorId : (typeof actorId === 'string' ? 0 : 0),
+        adminEmail: authUser?.email || 'system',
+        action: isAdmin ? 'ADMIN_UPDATE_USER_PROFILE' : 'USER_UPDATE_PROFILE',
+        targetType: 'user',
+        targetId: String(user.id),
+        details: { fields: Object.keys(body).filter(k => body[k] !== undefined) },
+        ipAddress: getClientIP(request),
+      });
+    } catch { /* ignore log error */ }
 
     const refreshedUser = await getUserByEmail(email)
     return NextResponse.json({

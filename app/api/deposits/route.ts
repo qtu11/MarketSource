@@ -165,11 +165,13 @@ export async function POST(request: NextRequest): Promise<Response> {
     );
 
     const notifyPayload = {
+      id: result.id,
       userName: depositData.userName || authUser.email?.split('@')[0] || 'User',
       userEmail: authUser.email || undefined,
       amount: depositData.amount,
       method: depositData.method,
       transactionId: effectiveTxnId,
+      transactionCode: result.transactionCode,
       depositReferenceCode,
       ipAddress: depositData.ipAddress,
       deviceInfo: depositData.deviceInfo,
@@ -184,9 +186,10 @@ export async function POST(request: NextRequest): Promise<Response> {
     return NextResponse.json({
       success: true,
       message: 'Deposit request received',
-      deposit: depositRow || {
+      deposit: depositRow ? { ...depositRow, transaction_code: result.transactionCode } : {
         id: result.id,
-        timestamp: result.timestamp
+        timestamp: result.timestamp,
+        transaction_code: result.transactionCode
       },
       depositId: result.id
     });

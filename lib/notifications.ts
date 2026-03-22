@@ -48,7 +48,8 @@ function formatDeviceInfo(deviceInfo?: DeviceInfo) {
 export async function sendTelegramNotification(
   message: string,
   chatId?: string,
-  maxRetries: number = 3
+  maxRetries: number = 3,
+  replyMarkup?: any
 ) {
   const token = TELEGRAM_BOT_TOKEN;
   const targetChatId = chatId || TELEGRAM_CHAT_ID;
@@ -65,14 +66,20 @@ export async function sendTelegramNotification(
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
 
+      const body: any = {
+        chat_id: targetChatId,
+        text: message,
+        parse_mode: 'HTML',
+      };
+
+      if (replyMarkup) {
+        body.reply_markup = replyMarkup;
+      }
+
       const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: targetChatId,
-          text: message,
-          parse_mode: 'HTML',
-        }),
+        body: JSON.stringify(body),
         signal: controller.signal
       });
 
@@ -104,19 +111,23 @@ export async function sendTelegramNotification(
  * Thông báo yêu cầu nạp tiền
  */
 export async function notifyDepositRequest(payload: {
+  id?: number | string;
   userName?: string;
   userEmail?: string;
   amount: number;
   method: string;
   transactionId: string;
-  /** Mã 16 ký tự cố định theo user (trang nạp tiền) */
+  /** Mã 16 ký tự DUY NHẤT cho từng giao dịch (vừa tạo) */
+  transactionCode?: string | null;
+  /** Mã 16 ký tự cố định theo user (để fallback nếu cần) */
   depositReferenceCode?: string | null;
   ipAddress?: string;
   deviceInfo?: DeviceInfo;
 }) {
+  const displayCode = payload.transactionCode || payload.depositReferenceCode;
   const refLine =
-    payload.depositReferenceCode && String(payload.depositReferenceCode).trim()
-      ? `🔑 <b>Mã giao dịch (hệ thống):</b> <code>${escapeHTML(String(payload.depositReferenceCode).trim())}</code>\n`
+    displayCode && String(displayCode).trim()
+      ? `🔑 <b>Mã giao dịch (hệ thống):</b> <code>${escapeHTML(String(displayCode).trim())}</code>\n`
       : '';
 
   const message = `💳 <b>YÊU CẦU NẠP TIỀN MỚI</b>
@@ -133,7 +144,26 @@ ${refLine}📝 <b>Mã GD ngân hàng / ví:</b> ${escapeHTML(payload.transaction
 
 <i>Vui lòng kiểm tra và duyệt yêu cầu!</i>`;
 
-  await sendTelegramNotification(message);
+  const inlineKeyboard = payload.id ? {
+    inline_keyboard: [
+      [
+        { text: '✅ Duyệt Nạp', callback_data: `approve_deposit_${payload.id}_${payload.amount}_${Date.now()}` },
+        { text: '❌ Từ chối', callback_data: `reject_deposit_${payload.id}_${payload.amount}_${Date.now()}` }
+      ]
+    ]
+  } : undefined;
+
+  await sendTelegramNotification(message, undefined, 3, inlineKeyboard);
+  
+  // ✅ NEW: Gửi email xác nhận yêu cầu nạp tiền cho khách hàng
+  if (payload.userEmail) {
+    await emailService.sendDepositRequestEmail(
+      payload.userEmail,
+      payload.amount,
+      payload.method,
+      payload.transactionCode || undefined
+    ).catch(e => logger.error('Deposit request email failed', e));
+  }
 
   // Gửi WhatsApp nếu có cấu hình
   const adminWhatsapp = process.env.ADMIN_WHATSAPP || process.env.NEXT_PUBLIC_ADMIN_WHATSAPP;
@@ -149,6 +179,7 @@ ${refLine}📝 <b>Mã GD ngân hàng / ví:</b> ${escapeHTML(payload.transaction
  * Thông báo yêu cầu rút tiền
  */
 export async function notifyWithdrawalRequest(payload: {
+  id?: number | string;
   userName?: string;
   userEmail?: string;
   amount: number;
@@ -171,7 +202,24 @@ export async function notifyWithdrawalRequest(payload: {
 
 <i>Vui lòng kiểm tra và xử lý!</i>`;
 
-  await sendTelegramNotification(message);
+  const inlineKeyboard = payload.id ? {
+    inline_keyboard: [
+      [
+        { text: '✅ Duyệt Rút', callback_data: `approve_withdraw_${payload.id}_${payload.amount}_${Date.now()}` },
+        { text: '❌ Từ chối', callback_data: `reject_withdraw_${payload.id}_${payload.amount}_${Date.now()}` }
+      ]
+    ]
+  } : undefined;
+
+  await sendTelegramNotification(message, undefined, 3, inlineKeyboard);
+
+  // ✅ NEW: Gửi email xác nhận yêu cầu rút tiền cho khách hàng
+  if (payload.userEmail) {
+    await emailService.sendWithdrawalRequestEmail(
+      payload.userEmail,
+      payload.amount
+    ).catch(e => logger.error('Withdrawal request email failed', e));
+  }
 }
 
 /**

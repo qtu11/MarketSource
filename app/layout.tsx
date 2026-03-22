@@ -5,6 +5,7 @@ import "@/app/globals.css"
 import { ClientLayout } from "@/components/client-layout"
 import { validateEnv } from "@/lib/env-validator"
 import SessionTimeout from "@/components/SessionTimeout"
+import { NotificationCenter } from "@/components/NotificationCenter"
 
 // ✅ BUG #37 & #42: Validate environment variables on server start
 const envValidation = validateEnv()
@@ -119,6 +120,7 @@ export default function RootLayout({
       <body className={`${inter.className} bg-background text-foreground antialiased`}>
         <ClientLayout>
           {children}
+          <NotificationCenter />
           <SessionTimeout />
         </ClientLayout>
       </body>

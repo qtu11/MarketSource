@@ -18,6 +18,7 @@
 import { randomInt } from 'crypto';
 import { Pool, PoolClient } from 'pg';
 import { logger } from './logger';
+import { notificationEmitter, NOTIFICATION_EVENTS } from './events';
 
 // ✅ FIX: Detect Netlify environment (Netlify sets NETLIFY=true during build, CONTEXT during runtime)
 const isNetlify = process.env.NETLIFY === 'true' ||
@@ -1089,7 +1090,10 @@ export async function getDeposits(userId?: number) {
   try {
     await ensureUserDepositReferenceTable();
     let query = `
-      SELECT d.*, u.email, u.username, r.code AS deposit_reference_code
+      SELECT d.*, 
+             u.email AS "userEmail", 
+             COALESCE(u.username, u.name, u.email) AS "userName", 
+             r.code AS deposit_reference_code
       FROM deposits d
       LEFT JOIN users u ON d.user_id = u.id
       LEFT JOIN user_deposit_reference_codes r ON r.user_id = d.user_id
@@ -1109,6 +1113,35 @@ export async function getDeposits(userId?: number) {
     logger.error('Error getting deposits', error, { userId });
     throw error;
   }
+}
+
+let ensureDepositsSchemaPromise: Promise<void> | null = null;
+export async function ensureDepositsSchema(): Promise<void> {
+  if (isBuildTime) return;
+  if (!ensureDepositsSchemaPromise) {
+    ensureDepositsSchemaPromise = (async () => {
+      try {
+        // 1. Thêm cột transaction_code nếu chưa có
+        await pool.query(`
+          ALTER TABLE deposits 
+          ADD COLUMN IF NOT EXISTS transaction_code VARCHAR(16) UNIQUE;
+        `);
+        
+        // 2. Tạo index cho transaction_code nếu chưa có
+        await pool.query(`
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_deposits_transaction_code 
+          ON deposits (transaction_code);
+        `);
+
+        logger.info('Deposits schema updated successfully (transaction_code added)');
+      } catch (e: any) {
+        ensureDepositsSchemaPromise = null;
+        logger.error('ensureDepositsSchema failed', e);
+        // Không throw để tránh crash app nếu lỗi không nghiêm trọng
+      }
+    })();
+  }
+  await ensureDepositsSchemaPromise;
 }
 
 export async function createDeposit(depositData: {
@@ -1135,29 +1168,37 @@ export async function createDeposit(depositData: {
       // Không throw — cho phép custom methods nhưng log warning
     }
 
-    const dbUserId = await normalizeUserId(depositData.userId, depositData.userEmail);
+    await ensureDepositsSchema();
 
+    const dbUserId = await normalizeUserId(depositData.userId, depositData.userEmail);
     if (!dbUserId) {
       throw new Error('Cannot resolve user ID. User may not exist in database.');
     }
 
-    // ✅ FIX BUG-A6: Cache kết quả check schema thay vì query mỗi lần
+    // ✅ FIX BUG-A6: Check schema for transaction_id
     let hasTransactionId = depositsSchemaCache;
     if (hasTransactionId === null) {
       try {
         const checkResult = await pool.query(`
-          SELECT column_name 
-          FROM information_schema.columns 
-          WHERE table_schema = 'public' 
-          AND table_name = 'deposits' 
-          AND column_name = 'transaction_id'
+          SELECT column_name FROM information_schema.columns 
+          WHERE table_name = 'deposits' AND column_name = 'transaction_id'
         `);
         hasTransactionId = checkResult.rows.length > 0;
         depositsSchemaCache = hasTransactionId;
-      } catch (checkError) {
-        hasTransactionId = false;
+      } catch { hasTransactionId = false; }
+    }
+
+    // Sinh mã transaction_code duy nhất 16 ký tự
+    let transactionCode = '';
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const candidate = generateDepositReferenceCode();
+      const existing = await queryOne('SELECT id FROM deposits WHERE transaction_code = $1', [candidate]);
+      if (!existing) {
+        transactionCode = candidate;
+        break;
       }
     }
+    if (!transactionCode) transactionCode = generateDepositReferenceCode(); // Fallback if collisions somehow persist
 
     // Insert với hoặc không có transaction_id tùy theo schema
     const ipAddress = depositData.ipAddress || null;
@@ -1166,14 +1207,15 @@ export async function createDeposit(depositData: {
     let result;
     if (hasTransactionId) {
       result = await pool.query(
-        `INSERT INTO deposits (user_id, amount, method, transaction_id, user_email, user_name, status, ip_address, device_info)
-         VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)
-         RETURNING id, timestamp`,
+        `INSERT INTO deposits (user_id, amount, method, transaction_id, transaction_code, user_email, user_name, status, ip_address, device_info)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9)
+         RETURNING id, timestamp, transaction_code`,
         [
           dbUserId,
           depositData.amount,
           depositData.method,
           depositData.transactionId || null,
+          transactionCode,
           depositData.userEmail || null,
           depositData.userName || null,
           ipAddress,
@@ -1183,13 +1225,14 @@ export async function createDeposit(depositData: {
     } else {
       // Schema không có transaction_id, chỉ insert các cột cơ bản
       result = await pool.query(
-        `INSERT INTO deposits (user_id, amount, method, user_email, user_name, status, ip_address, device_info)
-         VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7)
-         RETURNING id, timestamp`,
+        `INSERT INTO deposits (user_id, amount, method, transaction_code, user_email, user_name, status, ip_address, device_info)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)
+         RETURNING id, timestamp, transaction_code`,
         [
           dbUserId,
           depositData.amount,
           depositData.method,
+          transactionCode,
           depositData.userEmail || null,
           depositData.userName || null,
           ipAddress,
@@ -1198,9 +1241,21 @@ export async function createDeposit(depositData: {
       );
     }
 
+    // ✅ NEW: Tạo thông báo real-time cho Admin khi có yêu cầu nạp mới
+    try {
+      await createNotification({
+        userId: dbUserId,
+        type: 'deposit_created',
+        message: `Có yêu cầu nạp tiền mới: ${depositData.amount.toLocaleString('vi-VN')}đ từ ${depositData.userEmail || 'User #' + dbUserId}`
+      })
+    } catch (err) {
+      logger.warn('Failed to create notification for new deposit', { userId: dbUserId })
+    }
+
     return {
       id: result.rows[0].id,
       timestamp: result.rows[0].timestamp,
+      transactionCode: result.rows[0].transaction_code
     };
   } catch (error) {
     logger.error('Error creating deposit', error, {
@@ -1340,6 +1395,17 @@ export async function approveDepositAndUpdateBalance(
 
     await client.query('COMMIT');
 
+    // ✅ NEW: Tạo thông báo real-time khi nạp tiền thành công
+    try {
+      await createNotification({
+        userId,
+        type: 'deposit_approved',
+        message: `Yêu cầu nạp ${amount.toLocaleString('vi-VN')}đ của bạn đã được duyệt thành công!`
+      });
+    } catch (err) {
+      logger.warn('Failed to create notification for approved deposit', { userId, depositId });
+    }
+
     return {
       success: true,
       newBalance,
@@ -1360,7 +1426,9 @@ export async function approveDepositAndUpdateBalance(
 export async function getWithdrawals(userId?: number) {
   try {
     let query = `
-      SELECT w.*, u.email, u.username
+      SELECT w.*, 
+             u.email AS "userEmail", 
+             COALESCE(u.username, u.name, u.email) AS "userName"
       FROM withdrawals w
       LEFT JOIN users u ON w.user_id = u.id
     `;
@@ -1556,11 +1624,25 @@ export async function createWithdrawal(withdrawalData: {
       throw e;
     }
 
-    return {
+    const withdrawalResult = {
       id: result.rows[0].id,
       createdAt: result.rows[0].created_at,
       idempotentReplay: false as const,
     };
+
+    // ✅ NEW: Thông báo real-time cho Admin khi có yêu cầu rút tiền mới
+    // Gọi ngoài transaction logic (hoặc sau commit) để an toàn
+    try {
+      await createNotification({
+        userId: dbUserId,
+        type: 'withdrawal_created',
+        message: `Có yêu cầu rút tiền mới: ${withdrawalData.amount.toLocaleString('vi-VN')}đ từ ${withdrawalData.userEmail || 'User #' + dbUserId}`
+      })
+    } catch (err) {
+      logger.warn('Failed to create notification for new withdrawal', { userId: dbUserId })
+    }
+
+    return withdrawalResult;
   });
 }
 
@@ -1627,6 +1709,18 @@ export async function updateWithdrawalStatus(
       `UPDATE withdrawals SET ${updates.join(', ')} WHERE id = $2`,
       params
     );
+
+    // ✅ NEW: Tạo thông báo real-time khi trạng thái rút tiền thay đổi
+    try {
+      const statusVn = status === 'approved' ? 'đã được duyệt' : (status === 'rejected' ? 'đã bị từ chối' : 'đang chờ xử lý');
+      await createNotification({
+        userId: withdrawal.user_id,
+        type: `withdrawal_${status}`,
+        message: `Yêu cầu rút ${withdrawal.amount.toLocaleString('vi-VN')}đ của bạn ${statusVn}.`
+      });
+    } catch (err) {
+      logger.warn('Failed to create notification for withdrawal update', { withdrawalId });
+    }
   });
 }
 
@@ -1713,8 +1807,8 @@ export async function getPurchases(userId?: number) {
              pr.image_url,
              pr.demo_url,
              pr.download_url,
-             u.email, 
-             u.username
+             u.email AS "userEmail", 
+             COALESCE(u.username, u.name, u.email) AS "userName"
       FROM purchases p
       LEFT JOIN products pr ON p.product_id = pr.id
       LEFT JOIN users u ON p.user_id = u.id
@@ -1807,6 +1901,25 @@ export async function createPurchase(purchaseData: {
       'INSERT INTO purchases (user_id, product_id, amount) VALUES ($1, $2, $3) RETURNING id',
       [dbUserId, productIdNum, price]
     );
+
+    // ✅ NEW: Thông báo real-time khi mua sản phẩm thành công
+    try {
+      // 1. Cho User
+      await createNotification({
+        userId: Number(dbUserId),
+        type: 'purchase_success',
+        message: `Bạn đã mua thành công sản phẩm #${productIdNum} với giá ${price.toLocaleString('vi-VN')}đ.`
+      });
+
+      // 2. Cho Admin
+      await createNotification({
+        userId: Number(dbUserId), // ID người mua để admin biết ai mua
+        type: 'order_created',
+        message: `Đơn hàng mới: Sản phẩm #${productIdNum} vừa được bán cho ${purchaseData.userEmail || 'User #' + dbUserId}`
+      });
+    } catch (err) {
+      logger.warn('Failed to create notification for purchase', { dbUserId, productIdNum });
+    }
 
     return {
       id: Number(result.rows[0].id),
@@ -2675,15 +2788,17 @@ export async function createReview(reviewData: {
   productId: number;
   rating: number;
   comment?: string | null;
+  ipAddress?: string | null;
 }) {
   try {
     const result = await pool.query(
-      `INSERT INTO reviews (user_id, product_id, rating, comment)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO reviews (user_id, product_id, rating, comment, ip_address)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (user_id, product_id)
        DO UPDATE SET 
          rating = EXCLUDED.rating, 
          comment = EXCLUDED.comment, 
+         ip_address = EXCLUDED.ip_address,
          updated_at = CURRENT_TIMESTAMP
        RETURNING id, created_at, updated_at`,
       [
@@ -2691,8 +2806,20 @@ export async function createReview(reviewData: {
         reviewData.productId,
         reviewData.rating,
         reviewData.comment || null,
+        reviewData.ipAddress || null,
       ]
     );
+
+    // ✅ NEW: Tạo thông báo real-time khi gửi đánh giá
+    try {
+      await createNotification({
+        userId: reviewData.userId,
+        type: 'review_added',
+        message: `Bạn đã gửi đánh giá ${reviewData.rating} sao cho sản phẩm #${reviewData.productId}.`
+      });
+    } catch (err) {
+      logger.warn('Failed to create notification for review', { userId: reviewData.userId });
+    }
 
     return {
       id: result.rows[0].id,
@@ -3311,7 +3438,14 @@ export async function createNotification(data: {
        RETURNING *`,
       [data.userId, data.type, data.message, data.isRead ?? false]
     );
-    return result.rows[0];
+    const notification = result.rows[0];
+
+    // ✅ NEW: Phát sự kiện real-time qua EventEmitter
+    if (notificationEmitter) {
+      notificationEmitter.emit(NOTIFICATION_EVENTS.NEW_NOTIFICATION, notification);
+    }
+
+    return notification;
   } catch (error) {
     logger.error("Error creating notification", error, data);
     throw error;

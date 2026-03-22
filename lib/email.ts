@@ -618,6 +618,155 @@ export async function sendWithdrawalApprovalEmail(email: string, amount: number,
   });
 }
 
+export async function sendDepositRequestEmail(email: string, amount: number, method: string, transactionCode?: string) {
+  const siteName = 'QTUS Dev Market';
+  const siteUrl = process.env.NEXT_PUBLIC_URL || 'https://market-source.vercel.app';
+
+  const htmlTemplate = `
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yêu cầu nạp tiền đã được ghi nhận</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f4f7f9; font-family: 'Inter', system-ui, -apple-system, sans-serif;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f4f7f9; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.05);">
+          <!-- Content Body -->
+          <tr>
+            <td style="padding: 40px;">
+              <div style="text-align: center; margin-bottom: 24px;">
+                <div style="background-color: #eff6ff; display: inline-block; padding: 16px; border-radius: 50%; margin-bottom: 16px;">
+                  <span style="font-size: 32px;">📑</span>
+                </div>
+                <h2 style="color: #1e40af; font-size: 24px; font-weight: 800; margin: 0;">Yêu cầu nạp tiền đã gửi!</h2>
+              </div>
+              
+              <p style="color: #475569; font-size: 16px; line-height: 1.8; margin: 0 0 24px 0; text-align: center;">
+                Chào bạn, chúng tôi đã nhận được yêu cầu nạp tiền của bạn. Admin sẽ kiểm tra và duyệt yêu cầu trong thời gian sớm nhất.
+              </p>
+              
+              <!-- Transaction Box -->
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 32px;">
+                <tr>
+                  <td style="padding: 24px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                      <span style="color: #64748b; font-size: 14px;">Số tiền:</span>
+                      <span style="color: #1e293b; font-size: 14px; font-weight: 700;">${amount.toLocaleString('vi-VN')} đ</span>
+                    </div>
+                    ${transactionCode ? `
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                      <span style="color: #64748b; font-size: 14px;">Nội dung chuyển khoản:</span>
+                      <span style="color: #2563eb; font-size: 14px; font-weight: 700; background-color: #eff6ff; padding: 2px 6px; border-radius: 4px;">${transactionCode}</span>
+                    </div>
+                    ` : ''}
+                    <div style="display: flex; justify-content: space-between;">
+                      <span style="color: #64748b; font-size: 14px;">Phương thức:</span>
+                      <span style="color: #1e293b; font-size: 14px; font-weight: 700;">${method}</span>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="color: #64748b; font-size: 13px; line-height: 1.6; text-align: center;">
+                Sau khi chuyển khoản thành công, vui lòng giữ lại minh chứng để đối soát nếu cần.
+              </p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #f8faff; padding: 30px 40px; text-align: center; border-top: 1px solid #f0f0f0;">
+              <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                © ${new Date().getFullYear()} ${siteName}. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+
+  return sendEmail({
+    to: email,
+    subject: `[${siteName}] Xác nhận: Yêu cầu nạp tiền ${amount.toLocaleString('vi-VN')}đ ${transactionCode ? `(${transactionCode}) ` : ''}đang được xử lý`,
+    html: htmlTemplate,
+  });
+}
+
+export async function sendWithdrawalRequestEmail(email: string, amount: number) {
+  const siteName = 'QTUS Dev Market';
+  const siteUrl = process.env.NEXT_PUBLIC_URL || 'https://market-source.vercel.app';
+
+  const htmlTemplate = `
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yêu cầu rút tiền đang được xử lý</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f4f7f9; font-family: 'Inter', system-ui, -apple-system, sans-serif;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f4f7f9; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.05);">
+          <!-- Content Body -->
+          <tr>
+            <td style="padding: 40px;">
+              <div style="text-align: center; margin-bottom: 24px;">
+                <div style="background-color: #fff7ed; display: inline-block; padding: 16px; border-radius: 50%; margin-bottom: 16px;">
+                  <span style="font-size: 32px;">💸</span>
+                </div>
+                <h2 style="color: #9a3412; font-size: 24px; font-weight: 800; margin: 0;">Đã nhận yêu cầu rút tiền!</h2>
+              </div>
+              
+              <p style="color: #475569; font-size: 16px; line-height: 1.8; margin: 0 0 24px 0; text-align: center;">
+                Chào bạn, yêu cầu rút <strong>${amount.toLocaleString('vi-VN')} đ</strong> của bạn đã được gửi tới bộ phận kế toán.
+              </p>
+              
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 32px;">
+                <tr>
+                  <td style="padding: 24px; text-align: center;">
+                    <p style="color: #64748b; font-size: 13px; margin: 0 0 8px 0;">Thời gian xử lý dự kiến</p>
+                    <p style="color: #1e293b; font-size: 18px; font-weight: 700; margin: 0;">24h - 48h làm việc</p>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="color: #64748b; font-size: 13px; line-height: 1.6; text-align: center;">
+                Yêu cầu của bạn sẽ được kiểm tra tính hợp lệ trước khi thực hiện chuyển khoản.
+              </p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #f8faff; padding: 30px 40px; text-align: center; border-top: 1px solid #f0f0f0;">
+              <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                © ${new Date().getFullYear()} ${siteName}. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+
+  return sendEmail({
+    to: email,
+    subject: `[${siteName}] Thông báo: Yêu cầu rút tiền đang chờ phê duyệt`,
+    html: htmlTemplate,
+  });
+}
+
 export async function sendSystemNotificationEmail(email: string, title: string, message: string) {
   const siteName = 'QTUS Dev Market';
   const siteUrl = process.env.NEXT_PUBLIC_URL || 'https://market-source.vercel.app';

@@ -1,29 +1,22 @@
 "use client"
 
 import { useEffect } from "react"
-import useSWRMutation from "swr/mutation"
 
-export function useDashboardEvents(onMessage: (payload: any) => void) {
-  const { trigger } = useSWRMutation("dashboard-events", async () => {
-    const response = await fetch("/api/dashboard/orders")
-    return response.json()
-  })
-
+/**
+ * Hook lắng nghe sự kiện cập nhật dữ liệu từ NotificationCenter (EventBus)
+ * Thay thế cho cơ chế SSE cũ rời rạc.
+ */
+export function useDashboardEvents(onUpdate: () => void) {
   useEffect(() => {
-    const source = new EventSource("/api/dashboard/events")
-    source.onmessage = event => {
-      if (!event?.data) return
-      try {
-        const payload = JSON.parse(event.data)
-        onMessage(payload)
-        trigger()
-      } catch {
-        // ignore
-      }
+    const handleUpdate = () => {
+      console.log("Dashboard Hook: Syncing data...");
+      onUpdate()
     }
+
+    window.addEventListener("userUpdated", handleUpdate)
     return () => {
-      source.close()
+      window.removeEventListener("userUpdated", handleUpdate)
     }
-  }, [onMessage, trigger])
+  }, [onUpdate])
 }
 

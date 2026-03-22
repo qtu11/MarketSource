@@ -1,12 +1,13 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useCallback } from "react"
 import useSWR from "swr"
 import { motion, useReducedMotion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useCurrentUser } from "@/hooks/use-current-user"
+import { useDashboardEvents } from "@/hooks/use-dashboard-events"
 import { apiGet } from "@/lib/api-client"
 import { useRouter } from "next/navigation"
 
@@ -21,12 +22,20 @@ export default function WalletPage() {
   const [activeTab, setActiveTab] = useState<"deposits" | "withdrawals">("deposits")
 
   // ✅ BUG-A4 FIX: Fetch cả deposits VÀ withdrawals
-  const { data: depositsData } = useSWR(user ? "/api/deposits?userId=self" : null, fetcher, {
+  const { data: depositsData, mutate: mutateDeposits } = useSWR(user ? "/api/deposits?userId=self" : null, fetcher, {
     revalidateOnFocus: false,
   })
-  const { data: withdrawalsData } = useSWR(user ? "/api/withdrawals?userId=self" : null, fetcher, {
+  const { data: withdrawalsData, mutate: mutateWithdrawals } = useSWR(user ? "/api/withdrawals?userId=self" : null, fetcher, {
     revalidateOnFocus: false,
   })
+
+  // ✅ NEW: Tự động refresh khi có notification event
+  useDashboardEvents(
+    useCallback(() => {
+      mutateDeposits()
+      mutateWithdrawals()
+    }, [mutateDeposits, mutateWithdrawals])
+  )
 
   const deposits = useMemo(() => depositsData?.deposits ?? [], [depositsData])
   const withdrawals = useMemo(() => withdrawalsData?.withdrawals ?? [], [withdrawalsData])

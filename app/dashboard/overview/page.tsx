@@ -237,6 +237,154 @@ export default function DashboardPage() {
   const [isDisablingTwoFactor, setIsDisablingTwoFactor] = useState(false)
   const [activeDashboardTab, setActiveDashboardTab] = useState<string>("purchases")
 
+  // ✅ REFACTOR: Chuyển loadUser thành useCallback để có thể truy cập từ bên ngoài (cho real-time sync)
+  const loadUser = useCallback(async () => {
+    try {
+      const { userManager } = await import('@/lib/userManager');
+
+      // Check login status
+      if (!userManager.isLoggedIn()) {
+        logger.warn('User not authenticated, redirecting to login')
+        router.push("/auth/login")
+        return
+      }
+
+      // Get user từ userManager (đã sync với database)
+      let completeUser = (await userManager.getUser()) as (User & UserData) | null;
+
+      if (!completeUser) {
+        // Fallback to localStorage
+        const currentUserData = getLocalStorage<User | null>("currentUser", null);
+        const qtusdevUserData = getLocalStorage<User | null>("qtusdev_user", null);
+        const userStr = currentUserData ? JSON.stringify(currentUserData) : (qtusdevUserData ? JSON.stringify(qtusdevUserData) : null)
+        if (!userStr) {
+          logger.warn('User not found, redirecting to login')
+          router.push("/auth/login")
+          return
+        }
+
+        try {
+          completeUser = JSON.parse(userStr) as User & UserData;
+        } catch (parseError) {
+          logger.error('Error parsing user', parseError);
+          router.push("/auth/login")
+          return
+        }
+      }
+
+      if (completeUser) {
+        setCurrentUser(completeUser);
+        setLocalStorage("currentUser", completeUser);
+        setLocalStorage("qtusdev_user", completeUser);
+        
+        setIsLoading(true);
+
+        try {
+          // 1. Load purchases
+          const purchaseRes = await apiGet('/api/dashboard/orders');
+          const purchases = purchaseRes.orders || purchaseRes.purchases || [];
+          setUserPurchases(purchases);
+          logger.debug('User purchases loaded from API', { count: purchases.length });
+
+          // 2. Load deposits
+          const depositRes = await apiGet('/api/deposits')
+          const deposits = (depositRes.deposits || []).map((d: any) => ({
+            ...d,
+            timestampFormatted: d.timestamp ? new Date(d.timestamp).toLocaleString("vi-VN") : "N/A"
+          }))
+          setDepositHistory(deposits)
+          logger.debug('User deposits loaded from API', { count: deposits.length });
+
+          // 3. Load withdrawals
+          if (completeUser) {
+            try {
+              const res = await apiGet('/api/withdrawals');
+              const userWithdrawals = (
+                res.withdrawals || 
+                res.data?.withdrawals || 
+                []
+              ) || [];
+
+              // Map format
+              const mappedWithdrawals = userWithdrawals.map((w: any) => ({
+                id: w.id,
+                userId: w.user_id,
+                userEmail: w.userEmail || w.user_email,
+                userName: w.userName || w.user_name,
+                amount: w.amount,
+                bankName: w.bank_name,
+                bankShortName: w.bank_name,
+                accountNumber: w.account_number,
+                accountName: w.account_name,
+                status: w.status,
+                approvedTime: w.approved_time || w.approvedTime,
+                requestTime: w.created_at || w.requestTime,
+                requestTimeFormatted: w.created_at
+                  ? new Date(w.created_at).toLocaleString("vi-VN")
+                  : new Date().toLocaleString("vi-VN")
+              }));
+
+              setWithdrawHistory(mappedWithdrawals);
+              logger.debug('User withdrawals loaded from API', { count: mappedWithdrawals.length });
+            } catch (withdrawalError: any) {
+              // ✅ FIX: Chỉ log error nếu không phải Unauthorized (401)
+              if (withdrawalError.message?.includes('Unauthorized')) {
+                logger.warn('User not authenticated, skipping withdrawals load');
+                // Không throw error, chỉ skip và dùng fallback
+              } else {
+                logger.error('Error loading withdrawals from API', withdrawalError);
+              }
+              // Fallback to localStorage
+              try {
+                const allWithdrawals = getLocalStorage<any[]>("approvedWithdrawals", []);
+                const pendingWithdrawals = getLocalStorage<any[]>("withdrawals", []);
+                const allWithdrawalsCombined = [...allWithdrawals, ...pendingWithdrawals];
+                const userWithdrawals = allWithdrawalsCombined.filter((withdrawal: any) => {
+                  // ✅ FIX: So sánh đúng kiểu dữ liệu (string vs number)
+                  const withdrawalUserId = withdrawal.userId?.toString();
+                  const userUid = completeUser!.uid?.toString();
+                  const userId = completeUser!.id?.toString();
+                  return withdrawalUserId === userUid ||
+                    withdrawalUserId === userId ||
+                    withdrawal.userEmail === completeUser!.email;
+                });
+                setWithdrawHistory(userWithdrawals);
+              } catch (localError) {
+                logger.error('Error loading from localStorage', localError);
+              }
+            }
+          }
+        } catch (error) {
+          logger.error('Error loading data from API', error);
+        }
+
+        // ✅ FIX: Chỉ send notification một lần khi dashboard được load lần đầu
+        // Không gửi mỗi lần refresh để tránh spam
+        const lastNotificationTime = getLocalStorage<string | null>('lastDashboardNotification', null);
+        const now = Date.now();
+        if (!lastNotificationTime || now - parseInt(lastNotificationTime) > 300000) { // 5 phút
+          setLocalStorage('lastDashboardNotification', now.toString());
+        }
+      }
+    } catch (error) {
+      logger.error('Error parsing user data', error)
+      router.push("/auth/login")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [router, userIP, deviceInfo]);
+
+  // ✅ NEW: Lưu tham chiếu đến loadUser để dùng trong event listener
+  const loadUserRef = useRef(loadUser);
+  useEffect(() => {
+    loadUserRef.current = loadUser;
+  }, [loadUser]);
+
+  useEffect(() => {
+    // ✅ FIX: Comprehensive user authentication check với userManager
+    loadUser();
+  }, [loadUser]);
+
   const onDashboardTabChange = useCallback(
     (value: string) => {
       setActiveDashboardTab(value)
@@ -383,10 +531,15 @@ export default function DashboardPage() {
   useEffect(() => {
     loadUserProfile()
 
-    // ✅ FIX: Lắng nghe sự kiện để cập nhật balance/profile khi admin duyệt hoặc user update elsewhere
+    // ✅ FIX: Lắng nghe sự kiện để cập nhật TOÀN BỘ dữ liệu (balance, purchases, deposits...)
     const handleUserUpdate = () => {
+      console.log("Dashboard: Real-time update triggered");
       setProfileLoaded(false)
       loadUserProfile()
+      // Tải lại toàn bộ dữ liệu giao dịch
+      if (loadUserRef.current) {
+        loadUserRef.current()
+      }
     }
 
     window.addEventListener('userUpdated', handleUserUpdate)
@@ -1106,295 +1259,6 @@ export default function DashboardPage() {
 
     fetchUserInfo()
   }, [])
-
-
-
-  useEffect(() => {
-    // ✅ FIX: Comprehensive user authentication check với userManager
-    const loadUser = async () => {
-      try {
-        const { userManager } = await import('@/lib/userManager');
-
-        // Check login status
-        if (!userManager.isLoggedIn()) {
-          logger.warn('User not authenticated, redirecting to login')
-          router.push("/auth/login")
-          return
-        }
-
-        // Get user từ userManager (đã sync với database)
-        let completeUser = (await userManager.getUser()) as (User & UserData) | null;
-
-        if (!completeUser) {
-          // Fallback to localStorage
-          const currentUserData = getLocalStorage<User | null>("currentUser", null);
-          const qtusdevUserData = getLocalStorage<User | null>("qtusdev_user", null);
-          const userStr = currentUserData ? JSON.stringify(currentUserData) : (qtusdevUserData ? JSON.stringify(qtusdevUserData) : null)
-          if (!userStr) {
-            logger.warn('User not found, redirecting to login')
-            router.push("/auth/login")
-            return
-          }
-
-          try {
-            completeUser = JSON.parse(userStr) as User & UserData;
-          } catch (parseError) {
-            logger.error('Error parsing user', parseError);
-            router.push("/auth/login")
-            return
-          }
-        }
-
-        if (!completeUser) {
-          logger.warn('User not found, redirecting to login')
-          router.push("/auth/login")
-          return
-        }
-
-        logger.debug('User found', {
-          uid: completeUser.uid,
-          email: completeUser.email,
-          provider: completeUser.provider,
-          balance: Number(completeUser.balance)
-        })
-
-        // Merge với data từ database nếu có
-        if (completeUser.uid) {
-          try {
-            const userUid = completeUser.uid as string;
-            const syncedUserData = await userManager.getUserData(userUid);
-            if (syncedUserData) {
-              const fallbackEmail = syncedUserData?.email || completeUser.email || 'unknown@qtus.dev';
-              const mergedUser: User & UserData = {
-                ...completeUser,
-                id: Number(completeUser.id || syncedUserData?.id || 0),
-                uid: userUid,
-                email: fallbackEmail,
-                name: syncedUserData?.name || syncedUserData?.displayName || completeUser.name,
-                displayName: syncedUserData?.displayName || syncedUserData?.name || completeUser.displayName,
-                provider: syncedUserData?.provider || completeUser.provider || 'email',
-                balance: Number(syncedUserData?.balance ?? completeUser.balance ?? 0),
-                loginCount: Number(syncedUserData?.loginCount ?? completeUser.loginCount ?? 1),
-                lastActivity: syncedUserData?.lastActivity || completeUser.lastActivity || new Date().toISOString(),
-                ipAddress: userIP !== "Loading..." ? userIP : (syncedUserData?.ip || syncedUserData?.ipAddress || completeUser.ipAddress || 'Unknown'),
-                deviceInfo: deviceInfo || completeUser.deviceInfo || syncedUserData?.meta?.deviceInfo,
-                status: syncedUserData?.role === 'admin' ? 'active' : (completeUser.status || 'active')
-              }
-              completeUser = mergedUser
-            }
-          } catch (syncError) {
-            logger.warn('Error syncing user data', { error: syncError });
-          }
-        }
-
-        if (!completeUser || !completeUser.id) {
-          logger.error('User data is null or missing id after loading')
-          router.push("/auth/login")
-          return
-        }
-
-        setCurrentUser(completeUser)
-
-        // Update lại via userManager để đảm bảo sync
-        if (completeUser.uid) {
-          const normalizedUserForManager = {
-            ...completeUser,
-            uid: completeUser.uid,
-          }
-          await userManager.saveUserData(completeUser.uid, normalizedUserForManager)
-        }
-
-        logger.debug('User data synced and set', {
-          uid: completeUser.uid,
-          email: completeUser.email,
-          balance: completeUser.balance,
-          provider: completeUser.provider
-        })
-
-        // Load data từ API PostgreSQL
-        try {
-          // Load purchases từ API (only if user is logged in)
-          if (completeUser && completeUser.email) {
-            try {
-              const purchasesResult = await apiGet('/api/purchases');
-              // API trả về { success: true, data: purchases }
-              const allPurchases = purchasesResult.data || purchasesResult.purchases || [];
-              const userPurchasesList = allPurchases.filter((purchase: any) =>
-                purchaseBelongsToUser(purchase, completeUser.email, completeUser.id)
-              );
-
-              // Map format để tương thích với UI
-              const localPurchases = getLocalStorage<any[]>("userPurchases", []);
-              const mappedPurchases = userPurchasesList.map((p: any) =>
-                mapPurchaseApiRowToItem(p as Record<string, unknown>, localPurchases)
-              );
-
-              setUserPurchases(mappedPurchases);
-              logger.debug('User purchases loaded from API', { count: mappedPurchases.length });
-            } catch (purchaseError: any) {
-              // ✅ FIX: Chỉ log error nếu không phải Unauthorized (401)
-              if (purchaseError.message?.includes('Unauthorized')) {
-                logger.warn('User not authenticated, skipping purchases load');
-                // Không throw error, chỉ skip và dùng fallback
-              } else {
-                logger.error('Error loading purchases from API', purchaseError);
-              }
-              // Fallback to localStorage
-              try {
-                const allPurchases = getLocalStorage<any[]>("userPurchases", []);
-                const userPurchasesList = allPurchases.filter((purchase: any) => {
-                  const purchaseUserId = purchase.userId?.toString();
-                  const userUid = completeUser.uid?.toString();
-                  const userId = completeUser.id?.toString();
-                  return purchaseUserId === userUid ||
-                    purchaseUserId === userId ||
-                    purchase.userEmail === completeUser.email ||
-                    purchase.email === completeUser.email;
-                });
-                setUserPurchases(userPurchasesList);
-              } catch (localError) {
-                logger.error('Error loading from localStorage', localError);
-              }
-            }
-          }
-
-          // Load deposits từ API
-          if (completeUser.email) {
-            try {
-              const depositsResult = await apiGet('/api/deposits');
-              const userDeposits = depositsResult.deposits?.filter((d: any) =>
-                d.userEmail === completeUser.email || d.user_email === completeUser.email
-              ) || [];
-
-              // Map format
-              const mappedDeposits = userDeposits.map((d: any) => ({
-                id: d.id,
-                user_id: d.user_id,
-                userId: d.user_id,
-                userEmail: d.userEmail || d.user_email,
-                userName: d.userName || d.user_name,
-                amount: d.amount,
-                method: d.method,
-                transactionId: d.transactionId || d.transaction_id,
-                status: d.status,
-                approvedTime: d.approved_time || d.approvedTime,
-                timestamp: d.timestamp || d.created_at,
-                requestTime: d.timestamp || d.created_at,
-                requestTimeFormatted: d.timestamp
-                  ? new Date(d.timestamp).toLocaleString("vi-VN")
-                  : new Date().toLocaleString("vi-VN")
-              }));
-
-              setDepositHistory(mappedDeposits);
-              logger.debug('User deposits loaded from API', { count: mappedDeposits.length });
-            } catch (depositError: any) {
-              // ✅ FIX: Chỉ log error nếu không phải Unauthorized (401)
-              if (depositError.message?.includes('Unauthorized')) {
-                logger.warn('User not authenticated, skipping deposits load');
-                // Không throw error, chỉ skip và dùng fallback
-              } else {
-                logger.error('Error loading deposits from API', depositError);
-              }
-              // Fallback to localStorage
-              try {
-                const allDeposits = getLocalStorage<any[]>("approvedDeposits", []);
-                const pendingDeposits = getLocalStorage<any[]>("deposits", []);
-                const allDepositsCombined = [...allDeposits, ...pendingDeposits];
-                const userDeposits = allDepositsCombined.filter((deposit: any) => {
-                  // ✅ FIX: So sánh đúng kiểu dữ liệu (string vs number)
-                  const depositUserId = deposit.userId?.toString();
-                  const userUid = completeUser.uid?.toString();
-                  const userId = completeUser.id?.toString();
-                  return depositUserId === userUid ||
-                    depositUserId === userId ||
-                    deposit.userEmail === completeUser.email;
-                });
-                setDepositHistory(userDeposits);
-              } catch (localError) {
-                logger.error('Error loading from localStorage', localError);
-              }
-            }
-          }
-
-          // Load withdrawals từ API
-          if (completeUser.email) {
-            try {
-              const withdrawalsResult = await apiGet('/api/withdrawals');
-              const userWithdrawals = withdrawalsResult.withdrawals?.filter((w: any) =>
-                w.userEmail === completeUser.email || w.user_email === completeUser.email
-              ) || [];
-
-              // Map format
-              const mappedWithdrawals = userWithdrawals.map((w: any) => ({
-                id: w.id,
-                userId: w.user_id,
-                userEmail: w.userEmail || w.user_email,
-                userName: w.userName || w.user_name,
-                amount: w.amount,
-                bankName: w.bank_name,
-                bankShortName: w.bank_name,
-                accountNumber: w.account_number,
-                accountName: w.account_name,
-                status: w.status,
-                approvedTime: w.approved_time || w.approvedTime,
-                requestTime: w.created_at || w.requestTime,
-                requestTimeFormatted: w.created_at
-                  ? new Date(w.created_at).toLocaleString("vi-VN")
-                  : new Date().toLocaleString("vi-VN")
-              }));
-
-              setWithdrawHistory(mappedWithdrawals);
-              logger.debug('User withdrawals loaded from API', { count: mappedWithdrawals.length });
-            } catch (withdrawalError: any) {
-              // ✅ FIX: Chỉ log error nếu không phải Unauthorized (401)
-              if (withdrawalError.message?.includes('Unauthorized')) {
-                logger.warn('User not authenticated, skipping withdrawals load');
-                // Không throw error, chỉ skip và dùng fallback
-              } else {
-                logger.error('Error loading withdrawals from API', withdrawalError);
-              }
-              // Fallback to localStorage
-              try {
-                const allWithdrawals = getLocalStorage<any[]>("approvedWithdrawals", []);
-                const pendingWithdrawals = getLocalStorage<any[]>("withdrawals", []);
-                const allWithdrawalsCombined = [...allWithdrawals, ...pendingWithdrawals];
-                const userWithdrawals = allWithdrawalsCombined.filter((withdrawal: any) => {
-                  // ✅ FIX: So sánh đúng kiểu dữ liệu (string vs number)
-                  const withdrawalUserId = withdrawal.userId?.toString();
-                  const userUid = completeUser.uid?.toString();
-                  const userId = completeUser.id?.toString();
-                  return withdrawalUserId === userUid ||
-                    withdrawalUserId === userId ||
-                    withdrawal.userEmail === completeUser.email;
-                });
-                setWithdrawHistory(userWithdrawals);
-              } catch (localError) {
-                logger.error('Error loading from localStorage', localError);
-              }
-            }
-          }
-        } catch (error) {
-          logger.error('Error loading data from API', error);
-        }
-
-        // ✅ FIX: Chỉ send notification một lần khi dashboard được load lần đầu
-        // Không gửi mỗi lần refresh để tránh spam
-        const lastNotificationTime = getLocalStorage<string | null>('lastDashboardNotification', null);
-        const now = Date.now();
-        if (!lastNotificationTime || now - parseInt(lastNotificationTime) > 300000) { // 5 phút
-          setLocalStorage('lastDashboardNotification', now.toString());
-        }
-
-      } catch (error) {
-        logger.error('Error parsing user data', error)
-        router.push("/auth/login")
-      } finally {
-        setIsLoading(false)
-      }
-    };
-
-    loadUser();
-  }, [router, userIP, deviceInfo]);
 
   // Load persisted wishlist, tickets (từ API), security preferences khi đã có user
   useEffect(() => {

@@ -156,6 +156,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     try {
       await notifyWithdrawalRequest({
+        id: result.id,
         userName: authUser.email?.split('@')[0],
         userEmail: authUser.email || undefined,
         amount: withdrawalData.amount,

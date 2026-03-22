@@ -23,7 +23,7 @@ export function CustomerSupport({ users: propUsers, adminUser }: CustomerSupport
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
   const [fetchingUsers, setFetchingUsers] = useState(false)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
 
   // ✅ FIX: Merge propUsers + tự fetch từ API nếu propUsers ít hơn thực tế
   const users = localUsers.length > 0 ? localUsers : propUsers
@@ -103,8 +103,13 @@ export function CustomerSupport({ users: propUsers, adminUser }: CustomerSupport
 
   // Auto scroll
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+    if (scrollAreaRef.current) {
+      scrollAreaRef.current.scrollTo({
+        top: scrollAreaRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, [messages.length])
 
   // Auto-refresh messages mỗi 10s
   useEffect(() => {
@@ -326,7 +331,7 @@ export function CustomerSupport({ users: propUsers, adminUser }: CustomerSupport
             </div>
 
             {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ background: 'linear-gradient(180deg, rgba(15,23,42,0.95) 0%, rgba(30,41,59,0.95) 100%)' }}>
+            <div ref={scrollAreaRef} className="flex-1 overflow-y-auto p-4 space-y-3" style={{ background: 'linear-gradient(180deg, rgba(15,23,42,0.95) 0%, rgba(30,41,59,0.95) 100%)' }}>
               {loading && (
                 <div className="flex justify-center py-8">
                   <RefreshCw className="w-5 h-5 text-purple-400 animate-spin" />
@@ -388,7 +393,8 @@ export function CustomerSupport({ users: propUsers, adminUser }: CustomerSupport
                   </div>
                 )
               })}
-              <div ref={messagesEndRef} />
+              {/* Bottom anchor for spacing if needed */}
+              <div className="h-1" />
             </div>
 
             {/* Input Area */}

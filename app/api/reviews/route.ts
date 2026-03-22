@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyFirebaseToken, validateRequest } from '@/lib/api-auth';
+import { verifyFirebaseToken, validateRequest, getClientIP } from '@/lib/api-auth';
 import { query, queryOne, getUserIdByEmail, createReview, getReviews, getProductAverageRating, pool } from '@/lib/database';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
@@ -66,7 +66,22 @@ export async function POST(request: NextRequest) {
       productId,
       rating,
       comment: comment || null,
+      ipAddress: getClientIP(request),
     });
+
+    // Audit log
+    try {
+      const { logAdminAction } = await import('@/lib/audit-logger');
+      await logAdminAction({
+        adminId: userId,
+        adminEmail: authUser.email || 'user',
+        action: 'USER_CREATE_REVIEW',
+        targetType: 'product',
+        targetId: String(productId),
+        details: { rating, hasComment: !!comment },
+        ipAddress: getClientIP(request),
+      });
+    } catch { /* ignore */ }
     
     return NextResponse.json({
       success: true,

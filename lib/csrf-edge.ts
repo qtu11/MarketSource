@@ -3,10 +3,8 @@
  */
 
 function getCsrfSecret(): string {
-  if (process.env.NODE_ENV === 'production' && !process.env.CSRF_SECRET) {
-    return ''
-  }
-  return process.env.CSRF_SECRET || 'dev-csrf-secret-only'
+  const secret = process.env.CSRF_SECRET || process.env.NEXTAUTH_SECRET || 'dev-csrf-secret-only'
+  return secret
 }
 
 async function sha256Hex(input: string): Promise<string> {

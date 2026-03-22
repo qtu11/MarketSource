@@ -174,10 +174,16 @@ export function onUsersChange(callback: (users: any[]) => void): () => void {
 
   listeners.get(key)!.add(callback);
 
-  // ✅ FIX: Chỉ call immediately nếu cache không có hoặc quá hạn (UserManager đã có cache riêng nên gọi getAllUsers trực tiếp)
+  // Lắng nghe sự kiện window để refresh tức thì
+  const handleWindowUpdate = () => {
+    userManager.getAllUsers().then(callback).catch(err => logger.error('Error getting users', err));
+  };
+  window.addEventListener('userUpdated', handleWindowUpdate);
+
   userManager.getAllUsers().then(callback).catch(err => logger.error('Error getting users', err));
 
   return () => {
+    window.removeEventListener('userUpdated', handleWindowUpdate);
     const callbacks = listeners.get(key);
     if (callbacks) {
       callbacks.delete(callback);
@@ -201,7 +207,12 @@ export function onDepositsChange(callback: (deposits: any[]) => void): () => voi
 
   listeners.get(key)!.add(callback);
 
-  // ✅ FIX: Chỉ fetch ngay lập tức nếu cache hết hạn
+  // Lắng nghe sự kiện window để refresh tức thì
+  const handleWindowUpdate = () => {
+    loadDepositsAndWithdrawals().then(() => callback([...cacheDeposits])).catch(err => logger.error('Error getting deposits', err));
+  };
+  window.addEventListener('depositsUpdated', handleWindowUpdate);
+
   const now = Date.now();
   if (now - lastDepositsUpdate < CACHE_TTL && cacheDeposits.length > 0) {
     callback([...cacheDeposits]);
@@ -210,6 +221,7 @@ export function onDepositsChange(callback: (deposits: any[]) => void): () => voi
   }
 
   return () => {
+    window.removeEventListener('depositsUpdated', handleWindowUpdate);
     const callbacks = listeners.get(key);
     if (callbacks) {
       callbacks.delete(callback);
@@ -233,7 +245,12 @@ export function onWithdrawalsChange(callback: (withdrawals: any[]) => void): () 
 
   listeners.get(key)!.add(callback);
 
-  // ✅ FIX: Chỉ fetch ngay lập tức nếu cache hết hạn
+  // Lắng nghe sự kiện window để refresh tức thì
+  const handleWindowUpdate = () => {
+    loadDepositsAndWithdrawals().then(() => callback([...cacheWithdrawals])).catch(err => logger.error('Error getting withdrawals', err));
+  };
+  window.addEventListener('withdrawalsUpdated', handleWindowUpdate);
+
   const now = Date.now();
   if (now - lastWithdrawalsUpdate < CACHE_TTL && cacheWithdrawals.length > 0) {
     callback([...cacheWithdrawals]);
@@ -242,6 +259,7 @@ export function onWithdrawalsChange(callback: (withdrawals: any[]) => void): () 
   }
 
   return () => {
+    window.removeEventListener('withdrawalsUpdated', handleWindowUpdate);
     const callbacks = listeners.get(key);
     if (callbacks) {
       callbacks.delete(callback);
@@ -261,33 +279,16 @@ export function onPurchasesChange(callback: (purchases: any[]) => void): () => v
     listeners.set(key, new Set());
     startPolling(key, async () => {
       try {
-        const now = Date.now();
-        if (now - lastPurchasesUpdate < CACHE_TTL && cachePurchases.length > 0) {
-          return [...cachePurchases];
+        const result = await apiGet('/api/purchases');
+        const data = result.purchases || result.data || [];
+        if (data.length >= 0) {
+          cachePurchases.length = 0;
+          cachePurchases.push(...data);
+          lastPurchasesUpdate = Date.now();
         }
-
-        if (activePurchasesPromise) {
-          return await activePurchasesPromise;
-        }
-
-        activePurchasesPromise = (async () => {
-          try {
-            const result = await apiGet('/api/purchases');
-            const data = result.purchases || result.data || [];
-            if (data.length > 0) {
-              cachePurchases.length = 0;
-              cachePurchases.push(...data);
-              lastPurchasesUpdate = Date.now();
-            }
-            return data;
-          } finally {
-            activePurchasesPromise = null;
-          }
-        })();
-
-        return await activePurchasesPromise;
+        return data;
       } catch (error) {
-        logger.error('Error fetching purchases', error);
+        logger.error('Error fetching purchases in polling', error);
         return [...cachePurchases];
       }
     });
@@ -295,32 +296,28 @@ export function onPurchasesChange(callback: (purchases: any[]) => void): () => v
 
   listeners.get(key)!.add(callback);
 
+  // Lắng nghe sự kiện window để refresh tức thì khi có đơn mới
+  const handleWindowUpdate = () => {
+    apiGet('/api/purchases').then(result => {
+      const data = result.purchases || result.data || [];
+      callback([...data]);
+    }).catch(err => logger.error('Error getting purchases via window event', err));
+  };
+  window.addEventListener('purchasesUpdated', handleWindowUpdate);
+
   // Call immediately với data hiện tại (hoặc từ cache)
   const now = Date.now();
   if (now - lastPurchasesUpdate < CACHE_TTL && cachePurchases.length > 0) {
     callback([...cachePurchases]);
-  } else if (activePurchasesPromise) {
-    activePurchasesPromise.then(data => callback([...data])).catch(() => callback([...cachePurchases]));
   } else {
-    activePurchasesPromise = (async () => {
-      try {
-        const result = await apiGet('/api/purchases');
-        const data = result.purchases || result.data || [];
-        if (data.length > 0) {
-          cachePurchases.length = 0;
-          cachePurchases.push(...data);
-          lastPurchasesUpdate = Date.now();
-        }
-        return data;
-      } finally {
-        activePurchasesPromise = null;
-      }
-    })();
-
-    activePurchasesPromise.then(data => callback([...data])).catch(() => callback([...cachePurchases]));
+    apiGet('/api/purchases').then(result => {
+      const data = result.purchases || result.data || [];
+      callback([...data]);
+    }).catch(() => callback([...cachePurchases]));
   }
 
   return () => {
+    window.removeEventListener('purchasesUpdated', handleWindowUpdate);
     const callbacks = listeners.get(key);
     if (callbacks) {
       callbacks.delete(callback);
