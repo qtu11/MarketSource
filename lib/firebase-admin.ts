@@ -8,6 +8,8 @@ import { logger } from './logger';
  * Centralized Firebase Admin initialization.
  * Uses environment variables for configuration.
  */
+let hasWarned = false;
+
 export async function getFirebaseAdmin() {
   try {
     const apps = getApps();
@@ -18,8 +20,11 @@ export async function getFirebaseAdmin() {
       const privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
       if (!projectId || !clientEmail || !privateKey) {
-        const msg = 'Missing Firebase Admin environment variables (PROJECT_ID, CLIENT_EMAIL, or PRIVATE_KEY)';
-        logger.warn(msg + '. Firebase features will be disabled.');
+        if (!hasWarned) {
+          const msg = 'Missing Firebase Admin environment variables (PROJECT_ID, CLIENT_EMAIL, or PRIVATE_KEY)';
+          logger.warn(msg + '. Firebase features will be disabled.');
+          hasWarned = true;
+        }
         return null;
       }
 
