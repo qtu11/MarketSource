@@ -15,10 +15,14 @@ export function isFirebaseConfigured(): boolean {
 }
 
 // Initialize Firebase Firestore (server-side only)
-if (typeof window === 'undefined' && isFirebaseConfigured()) {
+let realtimeDb: any = null;
+
+// Initialize Firebase (server & client)
+if (isFirebaseConfigured()) {
   try {
     const { initializeApp, getApps } = require('firebase/app')
     const { getFirestore } = require('firebase/firestore')
+    const { getDatabase } = require('firebase/database')
     
     const firebaseConfig = {
       projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
@@ -33,12 +37,13 @@ if (typeof window === 'undefined' && isFirebaseConfigured()) {
     const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
     db = getFirestore(app)
     firestore = db
+    realtimeDb = getDatabase(app)
   } catch (error) {
     console.warn('Firebase initialization failed:', error)
   }
 }
 
-export { firestore, db };
+export { firestore, db, realtimeDb };
 
 const firebaseExports = { firestore, db };
 export default firebaseExports;

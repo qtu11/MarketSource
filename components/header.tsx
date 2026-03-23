@@ -9,6 +9,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Menu, ShoppingCart, User, Wallet, LogOut, Settings } from 'lucide-react'
 import { Logo } from '@/components/logo'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { RankBadge } from '@/components/rank-badge'
 import { logger } from "@/lib/logger-client"
 import { toast } from "sonner"
 import {
@@ -202,9 +203,12 @@ export function Header() {
               <DropdownMenuContent className="w-56" align="end" forceMount>
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">
-                      {user.name || user.email}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium leading-none">
+                        {user.name || user.email}
+                      </p>
+                      <RankBadge rank={user.rank || 'Script Kiddie'} showLabel={false} className="px-1 py-0 h-3.5" />
+                    </div>
                     <p className="text-xs leading-none text-muted-foreground">
                       {user.email}
                     </p>
@@ -286,7 +290,10 @@ export function Header() {
                 {user ? (
                   <div className="flex flex-col space-y-2 pt-4 border-t">
                     <div className="px-2 py-2">
-                      <p className="text-sm font-medium">{user.name || user.email}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium">{user.name || user.email}</p>
+                        <RankBadge rank={user.rank || 'Script Kiddie'} showLabel={false} className="px-1 py-0 h-3.5" />
+                      </div>
                       <p className="text-xs text-muted-foreground">
                         Số dư: {balance.toLocaleString('vi-VN')}đ
                       </p>

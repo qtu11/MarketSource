@@ -13,11 +13,27 @@ export const runtime = 'nodejs'
 
 export async function POST(request: NextRequest) {
   try {
-    // ✅ Webhook Verification chống Spoofing
+    // ✅ Webhook Verification chống Spoofing (fail-closed in production)
     const telegramSecret = process.env.TELEGRAM_SECRET_TOKEN;
-    if (telegramSecret && request.headers.get('X-Telegram-Bot-API-Secret-Token') !== telegramSecret) {
-      logger.warn('Unauthorized telegram webhook attempt');
-      return NextResponse.json({ error: 'Unauthorized webhook' }, { status: 401 });
+    const headerSecret = request.headers.get('X-Telegram-Bot-API-Secret-Token');
+    const isProd = process.env.NODE_ENV === 'production';
+
+    if (isProd) {
+      // In production, misconfiguration must not weaken security.
+      if (!telegramSecret) {
+        logger.error('Telegram secret token not configured in production');
+        return NextResponse.json({ error: 'Telegram webhook not configured' }, { status: 500 });
+      }
+      if (!headerSecret || headerSecret !== telegramSecret) {
+        logger.warn('Unauthorized telegram webhook attempt (invalid secret header)');
+        return NextResponse.json({ error: 'Unauthorized webhook' }, { status: 401 });
+      }
+    } else {
+      // In dev/test, keep previous behavior: only verify if secret is provided.
+      if (telegramSecret && headerSecret !== telegramSecret) {
+        logger.warn('Unauthorized telegram webhook attempt');
+        return NextResponse.json({ error: 'Unauthorized webhook' }, { status: 401 });
+      }
     }
 
     const body = await request.json()

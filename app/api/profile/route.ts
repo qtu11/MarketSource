@@ -30,6 +30,8 @@ function buildProfileResponse(user: any, profileRow?: any) {
     postalCode: profileRow?.postal_code || "",
     twoFactorEnabled: profileRow?.two_factor_enabled ?? false,
     socialLinks,
+    rank: user.rank || 'Script Kiddie',
+    loc_points: user.loc_points || 0,
     updatedAt: profileRow?.updated_at || user.updated_at,
   }
 }

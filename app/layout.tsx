@@ -6,6 +6,7 @@ import { ClientLayout } from "@/components/client-layout"
 import { validateEnv } from "@/lib/env-validator"
 import SessionTimeout from "@/components/SessionTimeout"
 import { NotificationCenter } from "@/components/NotificationCenter"
+import { FomoTicker } from "@/components/fomo-ticker"
 
 // ✅ BUG #37 & #42: Validate environment variables on server start
 const envValidation = validateEnv()
@@ -118,6 +119,7 @@ export default function RootLayout({
         />
       </head>
       <body className={`${inter.className} bg-background text-foreground antialiased`}>
+        <FomoTicker />
         <ClientLayout>
           {children}
           <NotificationCenter />

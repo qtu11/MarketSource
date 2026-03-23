@@ -1,4 +1,4 @@
-﻿import { logger } from '../logger';
+import { logger } from '../logger';
 import { PoolClient, Pool } from 'pg';
 import { notificationEmitter, NOTIFICATION_EVENTS } from '../events';
 import { hasDownloadCountColumn } from './core';
@@ -210,7 +210,8 @@ export async function updateBalance(
       throw new Error('Invalid amount');
     }
 
-    // Má»™t cĂ¢u UPDATE atomic â€” trĂ¡nh TOCTOU giá»¯a SELECT vĂ  UPDATE khi khĂ´ng cĂ³ FOR UPDATE
+    let newBalance = 0;
+    
     if (type === 'increase') {
       const updateResult = await poolOrClient.query(
         'UPDATE users SET balance = balance + $1::numeric, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING balance',
@@ -219,20 +220,22 @@ export async function updateBalance(
       if (updateResult.rows.length === 0) {
         throw new Error('User not found');
       }
-      const newBalance = parseFloat(updateResult.rows[0].balance);
-      return { success: true, newBalance };
-    }
-
-    const updateResult = await poolOrClient.query(
-      'UPDATE users SET balance = balance - $1::numeric, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND balance >= $1::numeric RETURNING balance',
-      [amount, userId]
-    );
-    if (updateResult.rows.length > 0) {
-      const newBalance = parseFloat(updateResult.rows[0].balance);
-      return { success: true, newBalance };
-    }
-
-    if (type === 'set') {
+      newBalance = parseFloat(updateResult.rows[0].balance);
+    } else if (type === 'decrease') {
+      const updateResult = await poolOrClient.query(
+        'UPDATE users SET balance = balance - $1::numeric, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND balance >= $1::numeric RETURNING balance',
+        [amount, userId]
+      );
+      if (updateResult.rows.length === 0) {
+        const exists = await poolOrClient.query('SELECT balance FROM users WHERE id = $1', [userId]);
+        if (exists.rows.length === 0) {
+          throw new Error('User not found');
+        }
+        const currentBalance = parseFloat(exists.rows[0].balance || '0');
+        throw new Error(`Insufficient balance. Current: ${currentBalance}, Required: ${amount}`);
+      }
+      newBalance = parseFloat(updateResult.rows[0].balance);
+    } else if (type === 'set') {
       const updateResult = await poolOrClient.query(
         'UPDATE users SET balance = $1::numeric, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING balance',
         [amount, userId]
@@ -240,16 +243,18 @@ export async function updateBalance(
       if (updateResult.rows.length === 0) {
         throw new Error('User not found');
       }
-      const newBalance = parseFloat(updateResult.rows[0].balance);
-      return { success: true, newBalance };
+      newBalance = parseFloat(updateResult.rows[0].balance);
     }
 
-    const exists = await poolOrClient.query('SELECT balance FROM users WHERE id = $1', [userId]);
-    if (exists.rows.length === 0) {
-      throw new Error('User not found');
+    // ✅ Realtime Update
+    try {
+      const { publishDashboardEvent } = await import('../realtime/events');
+      await publishDashboardEvent('users', { id: userId, balance: newBalance, type: 'balance_update' });
+    } catch (e) {
+      logger.error('Realtime update failed for balance', { userId, error: e instanceof Error ? e.message : String(e) });
     }
-    const currentBalance = parseFloat(exists.rows[0].balance || '0');
-    throw new Error(`Insufficient balance. Current: ${currentBalance}, Required: ${amount}`);
+
+    return { success: true, newBalance };
   } catch (error) {
     logger.error('Error updating balance', error, { userId, amount, type });
     throw error;
@@ -333,11 +338,54 @@ export async function normalizeUserId(
 
     if (result.rows.length > 0) return Number(result.rows[0].id);
 
-    logger.warn('normalizeUserId: Failed to resolve database ID', { firebaseUidOrEmail, userEmail });
     return null;
   } catch (error) {
     logger.error('Error normalizing user ID', error, { firebaseUidOrEmail, userEmail });
     return null;
+  }
+}
+
+/**
+ * GAMIFICATION: Hệ thống Rank và tích lũy LOC (Lines of Code)
+ */
+export const RANKS = [
+  { name: 'Script Kiddie', minLOC: 0 },
+  { name: 'Apprentice', minLOC: 1000 },      // ~1tr VND
+  { name: 'Senior Dev', minLOC: 5000 },      // ~5tr VND
+  { name: 'Architect', minLOC: 20000 },     // ~20tr VND
+  { name: 'Legendary Hacker', minLOC: 100000 }, // ~100tr VND
+];
+
+export async function updateLOC(userId: number, amount: number, client?: PoolClient) {
+  const poolOrClient = client || pool;
+  try {
+    const res = await poolOrClient.query(
+      'UPDATE users SET loc_points = loc_points + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING loc_points, rank',
+      [Math.floor(amount), userId]
+    );
+    if (res.rows.length === 0) return;
+
+    const loc = parseInt(res.rows[0].loc_points);
+    const currentRank = res.rows[0].rank;
+
+    // Tìm rank cao nhất mà user đạt điều kiện
+    let newRank = RANKS[0].name;
+    for (const r of RANKS) {
+      if (loc >= r.minLOC) newRank = r.name;
+    }
+
+    if (newRank !== currentRank) {
+      await poolOrClient.query('UPDATE users SET rank = $1 WHERE id = $2', [newRank, userId]);
+      
+      // ✅ Realtime Alert
+      try {
+        const { publishDashboardEvent, publishTickerEvent } = await import('../realtime/events');
+        await publishDashboardEvent('users', { id: userId, rank: newRank, locPoints: loc, type: 'rank_up' });
+        await publishTickerEvent(`ChĂºc má»«ng! User #${userId} vá»«a thÄƒng háº¡ng lĂªn [${newRank.toUpperCase()}]! âš¡âš¡âš¡`, 'achievement');
+      } catch (e) { /* ignore */ }
+    }
+  } catch (error) {
+    logger.error('Error updating LOC', error, { userId, amount });
   }
 }
 

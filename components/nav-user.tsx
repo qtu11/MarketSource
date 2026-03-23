@@ -2,6 +2,8 @@
 
 import { BadgeCheck, Bell, ChevronsUpDown, CreditCard, LogOut, Sparkles } from "lucide-react"
 
+import { RankBadge } from "./rank-badge"
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -21,6 +23,7 @@ export function NavUser({
     name: string
     email: string
     avatar: string
+    rank?: string
   }
 }) {
   const { isMobile } = useSidebar()
@@ -39,7 +42,10 @@ export function NavUser({
                 <AvatarFallback className="rounded-lg">CN</AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">{user.name}</span>
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-semibold">{user.name}</span>
+                  <RankBadge rank={user.rank || 'Script Kiddie'} showLabel={false} className="px-1 py-0 h-3.5" />
+                </div>
                 <span className="truncate text-xs">{user.email}</span>
               </div>
               <ChevronsUpDown className="ml-auto size-4" />
@@ -58,7 +64,10 @@ export function NavUser({
                   <AvatarFallback className="rounded-lg">CN</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">{user.name}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="truncate font-semibold">{user.name}</span>
+                    <RankBadge rank={user.rank || 'Script Kiddie'} showLabel={false} className="px-1 py-0 h-3.5" />
+                  </div>
                   <span className="truncate text-xs">{user.email}</span>
                 </div>
               </div>

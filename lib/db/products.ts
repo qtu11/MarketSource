@@ -6,6 +6,7 @@ export async function getProducts(filters?: {
   isActive?: boolean;
   limit?: number;
   offset?: number;
+  userRank?: string; // NEW
 }) {
   try {
     // âœ… FIX: Check pool instance trÆ°á»›c khi query
@@ -18,6 +19,9 @@ export async function getProducts(filters?: {
     const hasDownloadCount = await hasDownloadCountColumn();
 
     // âœ… FIX: Join vá»›i product_ratings Ä‘á»ƒ láº¥y ratings vĂ  download_count (náº¿u cĂ³)
+    const params: any[] = [filters?.userRank || 'Script Kiddie'];
+    let paramIndex = 2;
+
     let query = `
       SELECT p.*, 
              pr.average_rating, 
@@ -26,9 +30,28 @@ export async function getProducts(filters?: {
       FROM products p
       LEFT JOIN product_ratings pr ON p.id = pr.product_id
       WHERE p.deleted_at IS NULL
+      AND (
+        p.is_hidden = FALSE 
+        OR ($1::text IS NOT NULL AND (
+          CASE p.min_rank
+            WHEN 'Script Kiddie' THEN 0
+            WHEN 'Apprentice' THEN 1
+            WHEN 'Senior Dev' THEN 2
+            WHEN 'Architect' THEN 3
+            WHEN 'Legendary Hacker' THEN 4
+            ELSE 0
+          END <= 
+          CASE $1::text
+            WHEN 'Script Kiddie' THEN 0
+            WHEN 'Apprentice' THEN 1
+            WHEN 'Senior Dev' THEN 2
+            WHEN 'Architect' THEN 3
+            WHEN 'Legendary Hacker' THEN 4
+            ELSE 0
+          END
+        ))
+      )
     `;
-    const params: any[] = [];
-    let paramIndex = 1;
 
     if (filters?.category) {
       query += ` AND p.category = $${paramIndex}`;
@@ -84,7 +107,7 @@ export async function getProducts(filters?: {
     throw error;
   }
 }
-export async function getProductById(productId: number) {
+export async function getProductById(productId: number, userRank?: string) {
   try {
     // âœ… FIX: Check xem cá»™t download_count cĂ³ tá»“n táº¡i khĂ´ng
     const hasDownloadCount = await hasDownloadCountColumn();
@@ -99,9 +122,28 @@ export async function getProductById(productId: number) {
       LEFT JOIN product_ratings pr ON p.id = pr.product_id
       WHERE p.id = $1 AND p.deleted_at IS NULL
     `;
+    const result = await (getPoolInstance()!).query(query, [productId]);
+    const product = result.rows[0];
 
-    const result = await pool.query(query, [productId]);
-    return result.rows[0] || null;
+    if (!product) return null;
+
+    // ✅ SECURITY CHECK: Nếu sản phẩm ẩn, kiểm tra rank
+    if (product.is_hidden) {
+      const getRankLevel = (r: string) => {
+        const ranks = ['Script Kiddie', 'Apprentice', 'Senior Dev', 'Architect', 'Legendary Hacker'];
+        return ranks.indexOf(r);
+      };
+      
+      const userLevel = getRankLevel(userRank || 'Script Kiddie');
+      const minLevel = getRankLevel(product.min_rank || 'Script Kiddie');
+      
+      if (userLevel < minLevel) {
+        logger.warn('Unauthorized access to hidden product', { productId, userRank });
+        return null;
+      }
+    }
+
+    return product;
   } catch (error) {
     logger.error('Error getting product by ID', error, { productId });
     throw error;
@@ -279,6 +321,12 @@ export async function updateProduct(
         [productId, productData.averageRating]
       );
     }
+
+    // ✅ Realtime Update
+    try {
+      const { publishDashboardEvent } = await import('../realtime/events');
+      await publishDashboardEvent('products', { id: productId, ...productData, type: 'product_update' });
+    } catch (e) { /* ignore */ }
 
     return await getProductById(productId);
   } catch (error) {

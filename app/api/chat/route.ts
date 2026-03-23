@@ -44,10 +44,11 @@ async function verifyAuthUser(request: NextRequest): Promise<{ email: string; ui
     
     if (adminToken) {
       try {
+        // Use admin verification so logout/blacklist is respected.
         const jwt = await import('@/lib/jwt');
-        const payload = await (jwt as any).verifyToken?.(adminToken.value);
+        const payload = await (jwt as any).verifyAdminToken?.(adminToken.value);
         if (payload?.email && payload?.role === 'admin') {
-          return { email: payload.email, uid: payload.uid || payload.sub, role: 'admin' };
+          return { email: payload.email, uid: payload.userId, role: 'admin' };
         }
       } catch { /* ignore fallback */ }
     }
@@ -128,7 +129,8 @@ export async function POST(request: NextRequest) {
       [sender.id]
     );
     
-    const isAdminUser = adminCheck !== null || authUser.role === 'admin';
+    // Enforce admin status from DB (do not let token role bypass).
+    const isAdminUser = adminCheck !== null;
     const senderId = sender.id;
     logger.info('Chat POST processed sender', { senderId, isAdminUser });
 
@@ -271,7 +273,8 @@ export async function GET(request: NextRequest) {
        WHERE u.id = $1 AND u.role IN ('admin', 'superadmin')`,
       [currentUserId]
     );
-    const isAdmin = adminCheck.length > 0 || authUser.role === 'admin';
+    // Enforce admin status from DB (do not let token role bypass).
+    const isAdmin = adminCheck.length > 0;
     
     // ✅ FIX: NEW - Update Admin "Online" heartbeat in Redis
     if (isAdmin) {

@@ -7,7 +7,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes, createHash, timingSafeEqual } from 'crypto';
 
 // ✅ FIX: Đảm bảo secret đồng bộ giữa Node và Edge, dùng NEXTAUTH_SECRET làm fallback tin cậy
-const CSRF_SECRET = process.env.CSRF_SECRET || process.env.NEXTAUTH_SECRET || 'dev-csrf-secret-only';
+const CSRF_SECRET =
+  process.env.CSRF_SECRET ||
+  process.env.NEXTAUTH_SECRET ||
+  (() => {
+    // Fail-closed in production: never use a predictable dev secret in prod.
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('CSRF_SECRET (or NEXTAUTH_SECRET) is required in production');
+    }
+    return 'dev-csrf-secret-only';
+  })();
 
 /**
  * Generate CSRF token

@@ -544,7 +544,8 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
                         ALLOWED_ATTR: ['href','src','alt','class','target','rel'],
                     });
                 } catch {
-                    return html.replace(/<script[\s\S]*?<\/script>/gi, '');
+                    // Fail closed: if sanitizer is unavailable, do not render HTML.
+                    return '';
                 }
               })()
             }}
@@ -611,7 +612,8 @@ export default function Product({ products, setProducts, adminUser }: ProductPro
                                     ALLOWED_ATTR: ['href','src','alt','class','target','rel'],
                                 });
                             } catch {
-                                return html.replace(/<script[\s\S]*?<\/script>/gi, '');
+                                // Fail closed: if sanitizer is unavailable, do not render HTML.
+                                return '';
                             }
                           })()
                         }}

@@ -16,23 +16,34 @@ export async function GET(req: NextRequest) {
   let authUserEmail: string | null = null;
   let isAdmin = false;
 
-  try {
-    const user = await verifyFirebaseToken(req);
-    if (user) {
-      authUserEmail = user.email;
-      // Fetch user from DB to get ID and role
-      const { getUserByEmail } = await import('@/lib/database');
-      if (user.email) {
-          const dbUser = await getUserByEmail(user.email);
-          if (dbUser) {
-              dbUserId = dbUser.id;
-              isAdmin = dbUser.role === 'admin' || dbUser.role === 'superadmin';
-          }
-      }
-    }
-  } catch (err) {
-    logger.warn('SSE: Authentication failed for stream connection');
+  const authUser = await verifyFirebaseToken(req).catch(() => null);
+  if (!authUser) {
+    return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
+
+  authUserEmail = authUser.email ?? null;
+  if (!authUserEmail) {
+    return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Fetch user from DB to get ID and role
+  const { getUserByEmail } = await import('@/lib/database');
+  const dbUser = await getUserByEmail(authUserEmail);
+  if (!dbUser) {
+    return new Response(JSON.stringify({ success: false, error: 'User not found' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  dbUserId = dbUser.id;
+  isAdmin = dbUser.role === 'admin' || dbUser.role === 'superadmin';
 
   logger.info('SSE: Client connected', { email: authUserEmail, isAdmin });
 
@@ -74,16 +85,21 @@ export async function GET(req: NextRequest) {
         // Trong route này, chúng ta sẽ tin tưởng notification.user_email hoặc notification.user_id nếu có.
 
         if (isSystemEvent) {
-          // Chỉ admin mới được nhận (Chúng ta sẽ kiểm tra role ở đây nếu có cache, hiện tại tạm lọc theo email admin nếu biết)
-          // Logic này sẽ được cải thiện khi kết hợp với logic role.
+          // System events chỉ dành cho admin (không fail-open cho user thường).
+          if (!isAdmin) return;
           emit(notification);
-        } else if (isPersonalEvent) {
-            // Kiểm tra khớp email hoặc ID
-            if (notification.user_email === authUserEmail || String(notification.user_id) === String(dbUserId)) {
-                emit(notification);
-            }
-        } else {
-          // Thông báo global
+          return;
+        }
+
+        if (isPersonalEvent) {
+          if (dbUserId != null && String(notification.user_id) === String(dbUserId)) {
+            emit(notification);
+          }
+          return;
+        }
+
+        // Nếu notification không gắn user_id thì chỉ admin mới được xem (giảm rò rỉ).
+        if (isAdmin) {
           emit(notification);
         }
       };

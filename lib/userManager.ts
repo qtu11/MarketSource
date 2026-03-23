@@ -1,5 +1,5 @@
 import { logger } from "./logger"
-import { setLocalStorage } from "./localStorage-utils"
+import { removeLocalStorage, setLocalStorage } from "./localStorage-utils"
 
 export interface UserData {
   uid: string
@@ -15,6 +15,8 @@ export interface UserData {
   ip?: string
   ipAddress?: string
   balance?: number
+  rank?: string
+  locPoints?: number
   totalSpent?: number
   lastActivity?: string
   loginCount?: number
@@ -141,6 +143,14 @@ class UserManager {
         cache: "no-store",
         credentials: "include",
       })
+      // Nếu token hết hạn/invalid thì không được fallback localStorage (tránh UI stale)
+      if (response.status === 401 || response.status === 403) {
+        removeLocalStorage("currentUser")
+        removeLocalStorage("qtusdev_user")
+        removeLocalStorage("isLoggedIn")
+        return null
+      }
+
       const data = await response.json().catch(() => null)
       if (!data?.success || !data?.profile) return null
       const p = data.profile
@@ -153,6 +163,8 @@ class UserManager {
         avatar: p.avatarUrl,
         avatar_url: p.avatarUrl,
         balance: p.balance,
+        rank: p.rank,
+        locPoints: p.loc_points,
       } as UserData
     } catch {
       return null

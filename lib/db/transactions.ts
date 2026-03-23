@@ -136,6 +136,26 @@ export async function createPurchase(purchaseData: {
       logger.warn('Failed to create notification for purchase', { dbUserId, productIdNum });
     }
 
+    // ✅ NEW: Tích lũy LOC và Ticker Event
+    try {
+      const { updateLOC } = await import('./users');
+      const { publishTickerEvent } = await import('../realtime/events');
+      
+      const locEarned = Math.floor(price / 1000);
+      if (locEarned > 0) {
+        await updateLOC(Number(dbUserId), locEarned, client);
+      }
+
+      // Ẩn email để bảo mật: a***@gmail.com
+      const maskedEmail = purchaseData.userEmail 
+        ? purchaseData.userEmail.replace(/(.{1}).+(@.+)/, "$1***$2")
+        : `User #${dbUserId}`;
+
+      await publishTickerEvent(`User [${maskedEmail}] vá»«a mua thĂ nh cĂ´ng sáº£n pháº©m má»›i! ðŸ›’`, 'purchase');
+    } catch (err) {
+      logger.error('Failed to process gamification for purchase', err);
+    }
+
     return {
       id: Number(result.rows[0].id),
       newBalance: currentBalance - price,
@@ -226,6 +246,25 @@ export async function createBulkPurchase(purchaseData: {
       logger.error('Failed to send purchase notification', notifyError);
     }
 
+    // ✅ NEW: Tích lũy LOC và Ticker Event
+    try {
+      const { updateLOC } = await import('./users');
+      const { publishTickerEvent } = await import('../realtime/events');
+      
+      const locEarned = Math.floor(totalAmount / 1000);
+      if (locEarned > 0) {
+        await updateLOC(Number(dbUserId), locEarned, client);
+      }
+
+      const maskedEmail = purchaseData.userEmail 
+        ? purchaseData.userEmail.replace(/(.{1}).+(@.+)/, "$1***$2")
+        : `User #${dbUserId}`;
+
+      await publishTickerEvent(`User [${maskedEmail}] vá»«a bá»‘t ${validatedItems.length} sáº£n pháº©m cĂ¹ng lĂºc! ðŸ”¥`, 'purchase');
+    } catch (err) {
+      logger.error('Failed to process gamification for bulk purchase', err);
+    }
+
     return {
       success: true,
       newBalance: currentBalance - totalAmount,
@@ -251,17 +290,73 @@ export async function processReferralCommission(
 
     const ref = refRes.rows[0];
     const pct = parseFloat(String(ref.commission_percent ?? 10));
-    let commission = Math.round(purchaseAmount * (pct / 100) * 100) / 100;
+    // Normalize inputs to 2 decimals for consistent NUMERIC(15,2) writes.
+    const purchaseAmt = Math.round(purchaseAmount * 100) / 100;
+    let commission = Math.round(purchaseAmt * (pct / 100) * 100) / 100;
 
-    // âœ… FIX BUG #4: Cap commission per transaction (fraud prevention)
-    const MAX_COMMISSION_PER_TRANSACTION = 500000; // 500,000 VND
+    // FIX BUG #4: Cap commission per transaction + daily total (fraud prevention)
+    const MAX_COMMISSION_PER_TRANSACTION = 500_000; // 500,000 VND
+    const MAX_DAILY_COMMISSION = 5_000_000; // 5M VND/day
+
     commission = Math.min(commission, MAX_COMMISSION_PER_TRANSACTION);
-
     if (commission <= 0) return null;
+
+    // Serialize credits per referrer to prevent daily-cap bypass via concurrency.
+    await client.query(
+      `SELECT id FROM users WHERE id = $1 FOR UPDATE`,
+      [ref.referrer_id]
+    );
+
+    // Guard: if referral_transactions table wasn't migrated, fail closed and skip commission.
+    let dailyTotalRes;
+    try {
+      dailyTotalRes = await client.query(
+        `SELECT COALESCE(SUM(commission_amount), 0) as total
+         FROM referral_transactions
+         WHERE referrer_id = $1
+           AND created_at >= CURRENT_DATE
+           AND created_at < (CURRENT_DATE + INTERVAL '1 day')`,
+        [ref.referrer_id]
+      );
+    } catch (e: any) {
+      if (e?.code === '42P01') {
+        logger.warn('referral_transactions table missing; skipping commission credit', {
+          referrerId: ref.referrer_id,
+        });
+        return null;
+      }
+      throw e;
+    }
+    const dailyTotal = parseFloat(dailyTotalRes.rows[0]?.total || '0');
+
+    const remainingToday = MAX_DAILY_COMMISSION - dailyTotal;
+    if (remainingToday <= 0) return null;
+
+    // If we're close to the cap, only credit the remaining amount.
+    const credited = Math.round(Math.min(commission, remainingToday) * 100) / 100;
+    if (credited <= 0) return null;
+
+    // Record the commission transaction for auditability + daily cap.
+    try {
+      await client.query(
+        `INSERT INTO referral_transactions
+           (referrer_id, referred_id, referral_id, purchase_amount, commission_amount)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [ref.referrer_id, referredUserId, ref.id, purchaseAmt, credited]
+      );
+    } catch (e: any) {
+      if (e?.code === '42P01') {
+        logger.warn('referral_transactions table missing; skipping commission credit', {
+          referrerId: ref.referrer_id,
+        });
+        return null;
+      }
+      throw e;
+    }
 
     await client.query(
       `UPDATE users SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-      [commission, ref.referrer_id]
+      [credited, ref.referrer_id]
     );
 
     await client.query(
@@ -270,10 +365,16 @@ export async function processReferralCommission(
          status = CASE WHEN status = 'pending' THEN 'active' ELSE status END,
          updated_at = CURRENT_TIMESTAMP
        WHERE id = $2`,
-      [commission, ref.id]
+      [credited, ref.id]
     );
 
-    return { referrerId: Number(ref.referrer_id), commissionAmount: commission };
+    // ✅ NEW: Ticker Event cho hoa hồng
+    try {
+      const { publishTickerEvent } = await import('../realtime/events');
+      await publishTickerEvent(`Há»‡ thá»‘ng vá»«a thanh toĂ¡n ${credited.toLocaleString('vi-VN')}Ä‘ hoa há»“ng cho cá»™ng tĂ¡c viĂªn! ðŸ’¸`, 'commission');
+    } catch (e) { /* ignore */ }
+
+    return { referrerId: Number(ref.referrer_id), commissionAmount: credited };
   });
 }
 
@@ -291,8 +392,13 @@ export async function createDeposit(depositData: {
 }) {
   try {
     // âœ… FIX: Validate amount
-    const amount = Number(depositData.amount);
-    if (isNaN(amount) || amount <= 0) {
+    const amountInput = Number(depositData.amount);
+    if (isNaN(amountInput) || amountInput <= 0) {
+      throw new Error('Deposit amount must be a positive number');
+    }
+    // FIX BUG #6: normalize to 2 decimals to match DECIMAL(15,2)
+    const amount = Math.round(amountInput * 100) / 100;
+    if (amount <= 0) {
       throw new Error('Deposit amount must be a positive number');
     }
 
@@ -347,7 +453,7 @@ export async function createDeposit(depositData: {
          RETURNING id, timestamp, transaction_code`,
         [
           dbUserId,
-          depositData.amount,
+          amount,
           depositData.method,
           depositData.transactionId || null,
           transactionCode,
@@ -365,7 +471,7 @@ export async function createDeposit(depositData: {
          RETURNING id, timestamp, transaction_code`,
         [
           dbUserId,
-          depositData.amount,
+          amount,
           depositData.method,
           transactionCode,
           depositData.userEmail || null,
@@ -381,7 +487,7 @@ export async function createDeposit(depositData: {
       await createNotification({
         userId: dbUserId,
         type: 'deposit_created',
-        message: `CĂ³ yĂªu cáº§u náº¡p tiá»n má»›i: ${depositData.amount.toLocaleString('vi-VN')}Ä‘ tá»« ${depositData.userEmail || 'User #' + dbUserId}`
+        message: `CĂ³ yĂªu cáº§u náº¡p tiá»n má»›i: ${amount.toLocaleString('vi-VN')}Ä‘ tá»« ${depositData.userEmail || 'User #' + dbUserId}`
       })
     } catch (err) {
       logger.warn('Failed to create notification for new deposit', { userId: dbUserId })
@@ -443,7 +549,9 @@ export async function createWithdrawal(withdrawalData: {
   if (isNaN(amount) || amount <= 0) {
     throw new Error('Sá»‘ tiá»n rĂºt pháº£i lá»›n hÆ¡n 0');
   }
-  if (amount < WITHDRAWAL_MIN) {
+  // Normalize to 2 decimals to match DECIMAL(15,2) behavior in DB.
+  const roundedAmount = Math.round(amount * 100) / 100;
+  if (roundedAmount < WITHDRAWAL_MIN) {
     throw new Error(`Sá»‘ tiá»n rĂºt tá»‘i thiá»ƒu lĂ  ${WITHDRAWAL_MIN.toLocaleString('vi-VN')}Ä‘`);
   }
 
@@ -491,7 +599,7 @@ export async function createWithdrawal(withdrawalData: {
     }
 
     const currentBalance = parseFloat(userRes.rows[0].balance || '0');
-    if (currentBalance < withdrawalData.amount) {
+    if (currentBalance < roundedAmount) {
       throw new Error('Insufficient balance');
     }
 
@@ -499,7 +607,7 @@ export async function createWithdrawal(withdrawalData: {
     const MAX_WITHDRAWAL_PER_TRANSACTION = 10_000_000; // 10M VND
     const DAILY_WITHDRAWAL_LIMIT = 50_000_000; // 50M VND
 
-    if (withdrawalData.amount > MAX_WITHDRAWAL_PER_TRANSACTION) {
+    if (roundedAmount > MAX_WITHDRAWAL_PER_TRANSACTION) {
       throw new Error(
         `Sá»‘ tiá»n rĂºt tá»‘i Ä‘a má»—i láº§n lĂ  ${MAX_WITHDRAWAL_PER_TRANSACTION.toLocaleString('vi-VN')}Ä‘`
       );
@@ -516,7 +624,7 @@ export async function createWithdrawal(withdrawalData: {
     );
     const todayTotal = parseFloat(dailyTotal.rows[0].total || '0');
 
-    if (todayTotal + withdrawalData.amount > DAILY_WITHDRAWAL_LIMIT) {
+    if (todayTotal + roundedAmount > DAILY_WITHDRAWAL_LIMIT) {
       const remaining = Math.max(0, DAILY_WITHDRAWAL_LIMIT - todayTotal);
       throw new Error(
         `VÆ°á»£t giá»›i háº¡n rĂºt tiá»n trong ngĂ y (${DAILY_WITHDRAWAL_LIMIT.toLocaleString('vi-VN')}Ä‘). ` +
@@ -538,7 +646,7 @@ export async function createWithdrawal(withdrawalData: {
     // 3. Trá»« tiá»n user_balance ngay láº­p tá»©c atomically
     await client.query(
       'UPDATE users SET balance = balance - $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND balance >= $1',
-      [withdrawalData.amount, dbUserId]
+      [roundedAmount, dbUserId]
     );
 
     // 4. Táº¡o báº£n ghi rĂºt tiá»n
@@ -559,7 +667,7 @@ export async function createWithdrawal(withdrawalData: {
         hasIdem
           ? [
             dbUserId,
-            withdrawalData.amount,
+            roundedAmount,
             withdrawalData.bankName,
             withdrawalData.accountNumber,
             withdrawalData.accountName,
@@ -570,7 +678,7 @@ export async function createWithdrawal(withdrawalData: {
           ]
           : [
             dbUserId,
-            withdrawalData.amount,
+            roundedAmount,
             withdrawalData.bankName,
             withdrawalData.accountNumber,
             withdrawalData.accountName,
@@ -583,7 +691,7 @@ export async function createWithdrawal(withdrawalData: {
       if (e?.code === '23505' && idem) {
         await client.query(
           'UPDATE users SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-          [withdrawalData.amount, dbUserId]
+          [roundedAmount, dbUserId]
         );
         const replay = await client.query(
           `SELECT id, created_at FROM withdrawals WHERE user_id = $1 AND idempotency_key = $2`,
@@ -612,7 +720,7 @@ export async function createWithdrawal(withdrawalData: {
       await createNotification({
         userId: dbUserId,
         type: 'withdrawal_created',
-        message: `CĂ³ yĂªu cáº§u rĂºt tiá»n má»›i: ${withdrawalData.amount.toLocaleString('vi-VN')}Ä‘ tá»« ${withdrawalData.userEmail || 'User #' + dbUserId}`
+        message: `CĂ³ yĂªu cáº§u rĂºt tiá»n má»›i: ${roundedAmount.toLocaleString('vi-VN')}Ä‘ tá»« ${withdrawalData.userEmail || 'User #' + dbUserId}`
       })
     } catch (err) {
       logger.warn('Failed to create notification for new withdrawal', { userId: dbUserId })

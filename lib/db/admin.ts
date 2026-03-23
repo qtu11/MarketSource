@@ -76,9 +76,17 @@ export async function createNotification(data: {
     );
     const notification = result.rows[0];
 
-    // âœ… NEW: PhĂ¡t sá»± kiá»‡n real-time qua EventEmitter
+    // ✅ NEW: Phát sự kiện real-time qua EventEmitter (SSE)
     if (notificationEmitter) {
       notificationEmitter.emit(NOTIFICATION_EVENTS.NEW_NOTIFICATION, notification);
+    }
+
+    // ✅ NEW: Đồng bộ sang Firebase Realtime Database
+    try {
+      const { publishDashboardEvent } = await import('../realtime/events');
+      await publishDashboardEvent('notifications', notification);
+    } catch (err) {
+      logger.error("Error syncing to Firebase Realtime", err);
     }
 
     return notification;

@@ -4,37 +4,10 @@ import { verifyCSRFToken } from './csrf';
 import { verifyAdminToken, invalidateAdminToken, adminTokenBlacklist } from './jwt';
 
 // Firebase Admin initialization (lazy load)
-let firebaseAdmin: any = null;
+import { getFirebaseAdmin } from './firebase-admin';
 
-async function getFirebaseAdmin() {
-  if (firebaseAdmin) {
-    return firebaseAdmin;
-  }
-
-  try {
-    const admin = await import('firebase-admin/app');
-    const { getApps, initializeApp, cert } = await import('firebase-admin/app');
-    const { getAuth } = await import('firebase-admin/auth');
-
-    const apps = getApps();
-    if (apps.length === 0) {
-      initializeApp({
-        credential: cert({
-          projectId: process.env.FIREBASE_PROJECT_ID,
-          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-          privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-        }),
-      });
-    }
-
-    firebaseAdmin = { getAuth };
-    return firebaseAdmin;
-  } catch (error) {
-    const { logger } = await import('@/lib/logger');
-    logger.error('Error initializing Firebase Admin', error);
-    // Fallback: nếu không có Firebase Admin, vẫn cho phép chạy (optional)
-    return null;
-  }
+async function getFirebaseAdminInstance() {
+  return await getFirebaseAdmin();
 }
 
 /**
@@ -166,7 +139,7 @@ export async function verifyFirebaseToken(
       return null;
     }
 
-    const admin = await getFirebaseAdmin();
+    const admin = await getFirebaseAdminInstance();
 
     if (!admin) {
       // ✅ SECURITY FIX: Email-based auth fallback CHỈ cho dev mode
@@ -204,7 +177,7 @@ export async function verifyFirebaseToken(
       return null;
     }
 
-    const auth = admin.getAuth();
+    const auth = admin.auth;
     const decodedToken = await auth.verifyIdToken(token);
 
     return {

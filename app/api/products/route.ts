@@ -7,11 +7,21 @@ import { logError, createErrorResponse } from '@/lib/error-handler'
 
 export const runtime = 'nodejs'
 
+import { verifyFirebaseToken } from '@/lib/api-auth'
+import { getUserByEmail } from '@/lib/db/users'
+
 /**
  * GET /api/products
  */
 export async function GET(request: NextRequest) {
   try {
+    const auth = await verifyFirebaseToken(request);
+    let userRank = 'Script Kiddie';
+    if (auth?.email) {
+      const user = await getUserByEmail(auth.email);
+      if (user) userRank = (user as any).rank || 'Script Kiddie';
+    }
+
     const rateLimitResponse = await checkRateLimitAndRespond(request, 30, 10, 'products-get');
     if (rateLimitResponse) {
       return rateLimitResponse;
@@ -28,7 +38,8 @@ export async function GET(request: NextRequest) {
       isActive?: boolean;
       limit?: number;
       offset?: number;
-    } = {};
+      userRank?: string;
+    } = { userRank };
 
     if (category) {
       filters.category = category;

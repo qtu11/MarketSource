@@ -21,6 +21,8 @@ const fetcher = async (url: string) => {
     avatar: p.avatarUrl,
     avatar_url: p.avatarUrl,
     balance: p.balance,
+    rank: p.rank,
+    locPoints: p.loc_points,
   }
   
   // Đồng bộ với localStorage cho các components legacy

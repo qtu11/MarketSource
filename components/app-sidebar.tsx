@@ -12,6 +12,7 @@ import {
   PieChart,
   Settings2,
   SquareTerminal,
+  ShieldAlert,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -19,13 +20,15 @@ import { NavProjects } from "@/components/nav-projects"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail } from "@/components/ui/sidebar"
+import { useCurrentUser } from "@/hooks/use-current-user"
 
 // This is sample data.
 const data = {
   user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
+    name: "User",
+    email: "user@example.com",
+    avatar: "/placeholder.svg",
+    rank: "Script Kiddie",
   },
   teams: [
     {
@@ -151,6 +154,14 @@ const data = {
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const currentUser = useCurrentUser()
+  const user = currentUser ? {
+    name: currentUser.name || "User",
+    email: currentUser.email || "",
+    avatar: currentUser.avatar || "",
+    rank: currentUser.rank || "Script Kiddie"
+  } : data.user
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
@@ -158,10 +169,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={data.navMain} />
+        {user.rank === 'Legendary Hacker' && (
+          <NavProjects projects={[
+            {
+              name: "DARK MARKET",
+              url: "/dashboard/products?category=hidden",
+              icon: ShieldAlert,
+            }
+          ]} />
+        )}
         <NavProjects projects={data.projects} />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={user} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

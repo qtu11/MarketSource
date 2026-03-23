@@ -29,7 +29,11 @@ const pool = new Pool({
 
 async function createAdmin() {
     const email = 'admin@qtusdevmarket.com';
-    const password = 'AdminPassword2025@';
+    const password = process.env.ADMIN_PASSWORD;
+    if (!password) {
+        console.error('❌ ADMIN_PASSWORD is required (do not hardcode passwords)');
+        process.exit(1);
+    }
     const name = 'Admin Marketsource';
     const username = 'qtusadmin';
     const role = 'admin';
@@ -54,7 +58,8 @@ async function createAdmin() {
          VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
                 [email, name, username, passwordHash, role]
             );
-            console.log(`✅ Admin account created: ${email} / ${password}`);
+            // Never log plaintext password in console/logs.
+            console.log(`✅ Admin account created: ${email}`);
         }
 
         // Also ensure this user exists in any other required tables if necessary

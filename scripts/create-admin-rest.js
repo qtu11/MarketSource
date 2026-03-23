@@ -80,7 +80,8 @@ async function createAdminWithRest() {
             });
 
             if (createRes.ok) {
-                console.log(`✅ Admin account created via REST API: ${email} / ${password}`);
+                // Never log plaintext password in console/logs.
+                console.log(`✅ Admin account created via REST API: ${email}`);
             } else {
                 const error = await createRes.text();
                 console.error('❌ Creation failed:', error);
